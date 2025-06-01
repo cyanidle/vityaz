@@ -1,0 +1,3 @@
+[submodule "deps/tapki"]
+	path = deps/tapki
+	url = https://github.com/cyanidle/tapki
