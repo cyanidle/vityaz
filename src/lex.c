@@ -1,7 +1,6 @@
 ﻿#include "vityaz.h"
 
-TAPKI_NORETURN
-    static void lex_err(Lexer* lex, const char* msg) {
+TAPKI_NORETURN static void lex_err(Lexer* lex, const char* msg) {
     Die("Error: %s! %s:%zu", msg, lex->source_name, lex->line);
 }
 
@@ -71,8 +70,8 @@ again:
         goto rhs;
     case '|':
         // todo
-    // case '$':
-    //     ch = *lex->cursor++;
+    case '$':
+        // todo
     default:
         if (lex->last == TOK_NEWLINE) {
             lex_id(lex);
@@ -86,14 +85,14 @@ again:
                 return lex->last = TOK_SUBNINJA;
             } else if (strcmp(lex->current.d, "default")) {
                 return lex->last = TOK_DEFAULT;
+            } else if (strcmp(lex->current.d, "pool")) {
+                return lex->last = TOK_POOL;
             } else {
                 return lex->last = TOK_ID;
             }
-
-        } else {
-        rhs:
-            lex_rhs(lex);
-            return lex->last = TOK_RHS;
         }
+    rhs:
+        lex_rhs(lex);
+        return lex->last = TOK_RHS;
     }
 }

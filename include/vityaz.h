@@ -19,6 +19,7 @@ typedef enum {
 
     TOK_RULE, // rule
     TOK_BUILD, // build
+    TOK_POOL, // pool
     TOK_EXPLICIT, // :
     TOK_IMPLICIT, // |
     TOK_ORDER_ONLY, // ||
