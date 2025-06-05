@@ -5,4 +5,5 @@ project(vityaz C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(vityaz src/main.c)
+add_executable(vityaz src/main.c src/lex.c)
+target_include_directories(vityaz PRIVATE include deps/tapki)
