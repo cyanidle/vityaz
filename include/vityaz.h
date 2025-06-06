@@ -4,14 +4,14 @@
 #include "tapki.h"
 
 typedef enum {
-    TOK_NEWLINE = 0,
+    TOK_ERROR = 0,
+
     TOK_EOF,
+    TOK_NEWLINE,
+    TOK_EQ,
 
     TOK_ID,
     TOK_RHS,
-
-    TOK_INDENT, // new scope
-    TOK_UNINDENT, // exit scope
 
     TOK_INCLUDE,
     TOK_DEFAULT,
@@ -23,25 +23,24 @@ typedef enum {
     TOK_EXPLICIT, // :
     TOK_IMPLICIT, // |
     TOK_ORDER_ONLY, // ||
-    TOK_VALIDATION, // |@
+    TOK_VALIDATOR, // |@
 } Token;
 
 typedef struct Lexer {
     const char* source_name;
+    const char* begin;
     const char* cursor;
     Arena* arena;
-    // other to 0
-    Vec(bool) are_derefs;
-    StrVec value_parts;
-    // private
-    size_t line;
-    size_t col;
-    Token last;
-    Str current;
-    struct Lexer* prev;
+    Str ident;
+    // priv
+    Str _temp;
 } Lexer;
 
-Token lex_next(Lexer* lexer);
+Token lex_next(Lexer* lexer, bool* indent);
+Token lex_peek(Lexer* lexer, bool* indent);
+
+typedef void (*EvalCallback)(void* ctx, const char* part, bool deref);
+void lex_evalstring(Lexer* lexer, void* ctx, EvalCallback cb, bool is_path);
 
 #endif //VITYAZ_H
 
