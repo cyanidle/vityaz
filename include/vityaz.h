@@ -4,14 +4,11 @@
 #include "tapki.h"
 
 typedef enum {
-    TOK_ERROR = 0,
-
-    TOK_EOF,
+    TOK_EOF = 0,
     TOK_NEWLINE,
     TOK_EQ,
 
     TOK_ID,
-    TOK_RHS,
 
     TOK_INCLUDE,
     TOK_DEFAULT,
@@ -26,6 +23,8 @@ typedef enum {
     TOK_VALIDATOR, // |@
 } Token;
 
+const char* tok_print(Token tok);
+
 typedef struct Lexer {
     const char* source_name;
     const char* begin;
@@ -37,22 +36,28 @@ typedef struct Lexer {
 Token lex_next(Lexer* lexer, bool* indent);
 Token lex_peek(Lexer* lexer, bool* indent);
 
+TAPKI_NORETURN TAPKI_FMT_ATTR(2, 3) void syntax_err(Lexer* lex, const char* fmt, ...);
+
 typedef struct {
     Arena* arena;
     Str result;
-} EvalContext;
+} Eval;
 
 // TODO: move these to another .c (not lex!)
-static void eval_part(EvalContext* ctx, const char* part, size_t len) {
+static void eval_part(Eval* ctx, const char* part, size_t len) {
     Arena* arena = ctx->arena;
     StrAppendF(&ctx->result, "%.*s", (int)len, part);
 }
-static void eval_deref(EvalContext* ctx, const char* var, size_t len) {
+static void eval_deref(Eval* ctx, const char* var, size_t len) {
     Arena* arena = ctx->arena;
     StrAppendF(&ctx->result, "${%.*s}", (int)len, var);
 }
 
-void lex_evalstring(Lexer* lexer, EvalContext* ctx, bool is_path);
+void lex_path(Lexer* lexer, Eval* ctx);
+void lex_rhs(Lexer* lexer, Eval* ctx);
+
+
+void parse(Arena* arena, const char* file);
 
 #endif //VITYAZ_H
 

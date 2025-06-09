@@ -1,7 +1,8 @@
 ﻿#include "vityaz.h"
+#include <string.h>
 
-TAPKI_NORETURN static void lex_err(Lexer* lex, const char* msg, const char* ctx) {
-    size_t line = 0, col = 0;
+void syntax_err(Lexer* lex, const char* fmt, ...) {
+    size_t line = 1, col = 0;
     for(const char* it = lex->begin; it != lex->cursor; ++it) {
         if (*it == '\n') {
             line++;
@@ -10,12 +11,11 @@ TAPKI_NORETURN static void lex_err(Lexer* lex, const char* msg, const char* ctx)
             col++;
         }
     }
-    Die("%s:%zu:%zu => syntax error: %s (%s)", lex->source_name, line, col, msg, ctx);
-}
-
-TAPKI_NORETURN static void lex_err_char(Lexer* lex, const char* msg, char ch) {
-    char ctx[] = {'"', ch, '"', 0};
-    lex_err(lex, msg, ctx);
+    va_list va;
+    va_start(va, fmt);
+    Str msg = TapkiVF(lex->arena, fmt, va);
+    va_end(va);
+    Die("%s:%zu (col %zu) => syntax error: %s", lex->source_name, line, col, msg.d);
 }
 
 static void eat_comment(Lexer* lex) {
@@ -39,16 +39,18 @@ static void eat_ws(Lexer* lex) {
         default:
             return;
         case '\t':
-            lex_err(lex, "Tabs not allowed", "\\t");
+            syntax_err(lex, "Tabs not allowed");
         }
     }
 }
 
-#define IDENT_BEGIN \
-'_': \
-    case 'a': case 'A': case 'b': case 'B': case 'c': case 'C': case 'd': case 'D': case 'e': case 'E': case 'f': case 'F': case 'g': case 'G': case 'h': case 'H': \
-    case 'i': case 'I': case 'j': case 'J': case 'k': case 'K': case 'l': case 'L': case 'm': case 'M': case 'n': case 'N': case 'o': case 'O': case 'p': case 'P': \
-    case 'q': case 'Q': case 'r': case 'R': case 's': case 'S': case 't': case 'T': case 'u': case 'U': case 'v': case 'V': case 'w': case 'W': case 'x': case 'X': \
+#define IDENT_BEGIN '_': \
+    case 'a': case 'A': case 'b': case 'B': case 'c': case 'C': case 'd': case 'D': \
+    case 'e': case 'E': case 'f': case 'F': case 'g': case 'G': case 'h': case 'H': \
+    case 'i': case 'I': case 'j': case 'J': case 'k': case 'K': case 'l': case 'L': \
+    case 'm': case 'M': case 'n': case 'N': case 'o': case 'O': case 'p': case 'P': \
+    case 'q': case 'Q': case 'r': case 'R': case 's': case 'S': case 't': case 'T': \
+    case 'u': case 'U': case 'v': case 'V': case 'w': case 'W': case 'x': case 'X': \
     case 'y': case 'Y': case 'z': case 'Z'
 
 #define IDENT_BODY \
@@ -63,12 +65,13 @@ static void lex_id(Lexer* lex, bool bracket) {
         switch (curr) {
         case '#':
             eat_comment(lex);
+            break;
         case ' ':
         case '\0':
         case '\r':
             lex->cursor++;
         case '\n':
-            return;
+            goto done;
         case IDENT_BODY:
             *VecPush(&lex->ident) = curr;
             lex->cursor++;
@@ -76,28 +79,27 @@ static void lex_id(Lexer* lex, bool bracket) {
         case '}':
             if (bracket) {
                 lex->cursor++;
-                return;
+                goto done;
             }
         default: {
-            lex_err_char(lex, "Unexpected character in identifier", curr);
+            syntax_err(lex, "Unexpected character in identifier: '%c'", curr);
         }
         }
     }
+done:
     if (lex->ident.size) {
         *VecPush(&lex->ident) = 0;
     }
+    VecShrink(&lex->ident);
 }
 
-// return if $ is a deref
+// return if deref
 static bool lex_dollar(Lexer* lex)
 {
     Arena* arena = lex->arena;
     switch (lex->cursor[0]) {
     case '\r':
         lex->cursor++;
-        if (TAPKI_UNLIKELY(lex->cursor[0] != '\n')) {
-            lex_err_char(lex, "Expected '\\n', got: ", lex->cursor[0]);
-        }
     case ' ':
     case '$':
     case ':':
@@ -113,16 +115,23 @@ static bool lex_dollar(Lexer* lex)
         lex_id(lex, false);
         return true;
     default:
-        lex_err_char(lex, "Unexpected $-escaped character", lex->cursor[0]);
+        syntax_err(lex, "Unexpected $-escaped character: '%c'", lex->cursor[0]);
     }
     return false;
 }
 
-void lex_evalstring(Lexer* lex, EvalContext *ctx, bool is_path) {
+static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
     Arena* arena = lex->arena;
+    lex->ident = (Str){0};
+    eat_ws(lex);
     while(true) {
         switch (lex->cursor[0]) {
+            // comment?
         case '$':
+            if (lex->ident.size) {
+                eval_part(ctx, lex->ident.d, lex->ident.size);
+                lex->ident.size = 0;
+            }
             lex->cursor++;
             if (lex_dollar(lex)) {
                 eval_deref(ctx, lex->ident.d, lex->ident.size);
@@ -130,14 +139,27 @@ void lex_evalstring(Lexer* lex, EvalContext *ctx, bool is_path) {
             break;
         case '\n':
         case '\0':
-            return;
+            goto done;
         case ' ': // terminates string only if path
             if (is_path)
-                return;
+                goto done;
         default:
             *VecPush(&lex->ident) = *lex->cursor++;
         }
     }
+done:
+    if (lex->ident.size) {
+        eval_part(ctx, lex->ident.d, lex->ident.size);
+        lex->ident.size = 0;
+    }
+}
+
+void lex_path(Lexer* lexer, Eval* ctx) {
+    return lex_evalstring(lexer, ctx, true);
+}
+
+void lex_rhs(Lexer* lexer, Eval* ctx) {
+    return lex_evalstring(lexer, ctx, false);
 }
 
 static Token do_lex_next(Lexer* lex, bool *indent, bool peek)
@@ -148,7 +170,7 @@ again:
     if (TAPKI_UNLIKELY(!*lex->cursor)) {
         return TOK_EOF;
     }
-    switch(*lex->cursor) {
+    switch(lex->cursor[0]) {
     case '#':
         lex->cursor++;
         eat_comment(lex);
@@ -180,23 +202,23 @@ again:
         if (peek)
             return TOK_ID;
         lex_id(lex, false);
-        if (strcmp(lex->ident.d, "build")) {
+        if (strcmp(lex->ident.d, "build") == 0) {
             return TOK_BUILD;
-        } else if (strcmp(lex->ident.d, "rule")) {
+        } else if (strcmp(lex->ident.d, "rule") == 0) {
             return TOK_RULE;
-        } else if (strcmp(lex->ident.d, "include")) {
+        } else if (strcmp(lex->ident.d, "include") == 0) {
             return TOK_INCLUDE;
-        } else if (strcmp(lex->ident.d, "subninja")) {
+        } else if (strcmp(lex->ident.d, "subninja") == 0) {
             return TOK_SUBNINJA;
-        } else if (strcmp(lex->ident.d, "default")) {
+        } else if (strcmp(lex->ident.d, "default") == 0) {
             return TOK_DEFAULT;
-        } else if (strcmp(lex->ident.d, "pool")) {
+        } else if (strcmp(lex->ident.d, "pool") == 0) {
             return TOK_POOL;
         } else {
             return TOK_ID;
         }
     default: {
-        lex_err_char(lex, "Unexpected character", *lex->cursor);
+        syntax_err(lex, "Unexpected character: '%c'", *lex->cursor);
     }
     }
 }
@@ -212,4 +234,25 @@ Token lex_peek(Lexer* lex, bool *indent)
 Token lex_next(Lexer* lex, bool *indent)
 {
     return do_lex_next(lex, indent, false);
+}
+
+const char* tok_print(Token tok)
+{
+    switch (tok) {
+    case TOK_EOF: return "TOK_EOF";
+    case TOK_NEWLINE: return "TOK_NEWLINE";
+    case TOK_EQ: return "TOK_EQ";
+    case TOK_ID: return "TOK_ID";
+    case TOK_INCLUDE: return "TOK_INCLUDE";
+    case TOK_DEFAULT: return "TOK_DEFAULT";
+    case TOK_SUBNINJA: return "TOK_SUBNINJA";
+    case TOK_RULE: return "TOK_RULE";
+    case TOK_BUILD: return "TOK_BUILD";
+    case TOK_POOL: return "TOK_POOL";
+    case TOK_EXPLICIT: return "TOK_EXPLICIT";
+    case TOK_IMPLICIT: return "TOK_IMPLICIT";
+    case TOK_ORDER_ONLY: return "TOK_ORDER_ONLY";
+    case TOK_VALIDATOR: return "TOK_VALIDATOR";
+    }
+    return "<invalid>";
 }
