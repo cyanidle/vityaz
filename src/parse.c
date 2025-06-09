@@ -4,7 +4,7 @@
 static void consume(Lexer* lex, Token tok) {
     bool indent;
     Token got;
-    if ((got = lex_next(lex, &indent)) != tok) {
+    if (TAPKI_UNLIKELY((got = lex_next(lex, &indent)) != tok)) {
         syntax_err(lex, "'%s' expected, got: '%s'", tok_print(tok), tok_print(got));
     }
 }
@@ -41,12 +41,7 @@ void parse(Arena* arena, const char* file)
             if (last != TOK_NEWLINE) {
                 syntax_err(&lex, "variable name must follow a newline, last was: %s", tok_print(last));
             }
-            break;
-        }
-        case TOK_EQ: {
-            if (last != TOK_ID) {
-                syntax_err(&lex, "'=' must follow a newline, last was: %s", tok_print(last));
-            }
+            consume(&lex, TOK_EQ);
             Eval eval = {arena};
             lex_rhs(&lex, &eval);
             printf("\"%s\"\n", eval.result.d);
