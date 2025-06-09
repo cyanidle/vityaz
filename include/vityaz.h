@@ -31,16 +31,28 @@ typedef struct Lexer {
     const char* begin;
     const char* cursor;
     Arena* arena;
-    Str ident;
-    // priv
-    Str _temp;
+    Str ident; //should be copied by lexer user!
 } Lexer;
 
 Token lex_next(Lexer* lexer, bool* indent);
 Token lex_peek(Lexer* lexer, bool* indent);
 
-typedef void (*EvalCallback)(void* ctx, const char* part, bool deref);
-void lex_evalstring(Lexer* lexer, void* ctx, EvalCallback cb, bool is_path);
+typedef struct {
+    Arena* arena;
+    Str result;
+} EvalContext;
+
+// TODO: move these to another .c (not lex!)
+static void eval_part(EvalContext* ctx, const char* part, size_t len) {
+    Arena* arena = ctx->arena;
+    StrAppendF(&ctx->result, "%.*s", (int)len, part);
+}
+static void eval_deref(EvalContext* ctx, const char* var, size_t len) {
+    Arena* arena = ctx->arena;
+    StrAppendF(&ctx->result, "${%.*s}", (int)len, var);
+}
+
+void lex_evalstring(Lexer* lexer, EvalContext* ctx, bool is_path);
 
 #endif //VITYAZ_H
 
