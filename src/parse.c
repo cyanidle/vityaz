@@ -6,10 +6,10 @@ void eval_add_part(Arena* arena, Eval* ctx, const char* str, size_t len, bool is
     *VecPush(&ctx->is_var) = is_var;
 }
 
-const char* deref_var(const Scope* scope, const char* name)
+const char* deref_var(const VarsScope* scope, const char* name)
 {
     while(scope) {
-        Str* result = StrMap_Find(&scope->vars, name);
+        Str* result = StrMap_Find(&scope->data, name);
         if (result) {
             return result->d;
         }
@@ -18,7 +18,19 @@ const char* deref_var(const Scope* scope, const char* name)
     Die("Could not deref variable: %s", name);
 }
 
-Str eval_expand(Arena* arena, Eval* ctx, const Scope* scope) {
+static Rule* deref_rule(const RulesScope* scope, const char* name)
+{
+    while(scope) {
+        Rule* result = Rules_Find(&scope->data, name);
+        if (result) {
+            return result;
+        }
+        scope = scope->prev;
+    }
+    Die("Could not find rule: %s", name);
+}
+
+Str eval_expand(Arena* arena, Eval* ctx, const VarsScope* scope) {
     Str result = {0};
     for (size_t i = 0; i < ctx->parts.size; ++i) {
         bool is_var = ctx->is_var.d[i];
@@ -66,7 +78,7 @@ static void parsing_start_new(Lexer* lex, ParsingState* state, ParsingMode mode,
     state->mode = mode;
 }
 
-static void parsing_add_var(Arena* arena, ParsingState* state, const char* name, Eval* eval, const Scope* scope) {
+static void parsing_add_var(Arena* arena, ParsingState* state, const char* name, Eval* eval, const VarsScope* scope) {
     switch (state->mode) {
     case PARSING_RULE: {
         Rule* rule = (Rule*)state->output;
@@ -79,7 +91,7 @@ static void parsing_add_var(Arena* arena, ParsingState* state, const char* name,
     }
     case PARSING_BUILD: {
         Build* build = (Build*)state->output;
-        *StrMap_At(&build->scope.vars, name) = eval_expand(arena, eval, scope);
+        *StrMap_At(&build->scope.data, name) = eval_expand(arena, eval, scope);
         break;
     }
     case PARSING_POOL: {
@@ -108,7 +120,12 @@ static void parsing_try_commit(Lexer* lex, ParsingState* state) {
     state->output = NULL;
 }
 
-static void do_parse(Arena* arena, Scope* scope, NinjaFile* result, const char* source_name, const char* data)
+static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
+{
+
+}
+
+static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* source_name, const char* data)
 {
     Lexer lex = {source_name, data, data, arena};
     ParsingState state = {0};
@@ -135,7 +152,7 @@ static void do_parse(Arena* arena, Scope* scope, NinjaFile* result, const char* 
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
-            Rule* rule = Rules_At(arena, &result->rules, name.d);
+            Rule* rule = Rules_At(arena, &scope.rules->data, name.d);
             if (rule->command.parts.d) {
                 syntax_err(&lex, "Rule already defined: %s", name.d);
             }
@@ -143,8 +160,12 @@ static void do_parse(Arena* arena, Scope* scope, NinjaFile* result, const char* 
             printf("rule '%s'\n", name.d);
             break;
         }
-        case TOK_BUILD: {
+        case TOK_DEFAULT: {
             // todo
+            break;
+        }
+        case TOK_BUILD: {
+            parse_build(&lex, scope, result, &state);
             break;
         }
         case TOK_ID: {
@@ -157,13 +178,13 @@ static void do_parse(Arena* arena, Scope* scope, NinjaFile* result, const char* 
             lex_rhs(&lex, &eval);
             if (indent) {
                 if (state.output) {
-                    parsing_add_var(arena, &state, id.d, &eval, scope);
+                    parsing_add_var(arena, &state, id.d, &eval, scope.vars);
                 } else {
                     syntax_err(&lex, "Unexpected indentation");
                 }
             } else {
-                Str value = eval_expand(arena, &eval, scope);
-                *StrMap_At(&scope->vars, id.d) = value;
+                Str value = eval_expand(arena, &eval, scope.vars);
+                *StrMap_At(&scope.vars->data, id.d) = value;
             }
             break;
         }
@@ -171,14 +192,14 @@ static void do_parse(Arena* arena, Scope* scope, NinjaFile* result, const char* 
         case TOK_INCLUDE: {
             Eval eval = {0};
             lex_path(&lex, &eval);
-            Str path = eval_expand(arena, &eval, scope);
+            Str path = eval_expand(arena, &eval, scope.vars);
             const char* action = lex.tok == TOK_INCLUDE ? "include" : "subninja";
-            Scope* nested_scope;
+            Scope nested_scope = scope;
             if (lex.tok == TOK_SUBNINJA) {
-                nested_scope = (Scope*)ArenaAlloc(arena, sizeof(Scope));
-                nested_scope->prev = scope;
-            } else {
-                nested_scope = scope;
+                nested_scope.vars = (VarsScope*)ArenaAlloc(arena, sizeof(VarsScope));
+                nested_scope.vars->prev = scope.vars;
+                nested_scope.rules = (RulesScope*)ArenaAlloc(arena, sizeof(RulesScope));
+                nested_scope.rules->prev = scope.rules;
             }
             FrameF("%s %s", action, path.d) {
                 printf("%s %s\n", action, path.d);
@@ -198,9 +219,10 @@ static void do_parse(Arena* arena, Scope* scope, NinjaFile* result, const char* 
 NinjaFile* parse(Arena* arena, const char* file)
 {
     NinjaFile* result = ArenaAlloc(arena, sizeof(*result));
-    *Rules_At(arena, &result->rules, "phony") = (Rule){0};
+    *Rules_At(arena, &result->root_rules.data, "phony") = (Rule){0};
     Pools_At(arena, &result->pools, "console")->depth = 1;
     Str data = ReadFile(file);
-    do_parse(arena, &result->root_scope, result, file, data.d);
+    Scope scope = {&result->root_rules, &result->root_vars};
+    do_parse(arena, scope, result, file, data.d);
     return result;
 }
