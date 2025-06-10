@@ -256,20 +256,22 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             ArenaClear(lex.eval_arena);
             break;
         }
-        case TOK_SUBNINJA:
+        case TOK_SUBNINJA: {
+            Str path = parse_path(&lex, scope.vars);
+            Scope nested_scope = scope;
+            nested_scope.vars = (VarsScope*)ArenaAlloc(arena, sizeof(VarsScope));
+            nested_scope.vars->prev = scope.vars;
+            nested_scope.rules = (RulesScope*)ArenaAlloc(arena, sizeof(RulesScope));
+            nested_scope.rules->prev = scope.rules;
+            FrameF("subninja %s", path.d) {
+                do_parse(arena, nested_scope, result, path.d, ReadFile(path.d).d);
+            }
+            break;
+        }
         case TOK_INCLUDE: {
             Str path = parse_path(&lex, scope.vars);
-            const char* action = lex.tok == TOK_INCLUDE ? "include" : "subninja";
-            Scope nested_scope = scope;
-            if (lex.tok == TOK_SUBNINJA) {
-                nested_scope.vars = (VarsScope*)ArenaAlloc(arena, sizeof(VarsScope));
-                nested_scope.vars->prev = scope.vars;
-                nested_scope.rules = (RulesScope*)ArenaAlloc(arena, sizeof(RulesScope));
-                nested_scope.rules->prev = scope.rules;
-            }
-            FrameF("%s %s", action, path.d) {
-                Str next_data = ReadFile(path.d);
-                do_parse(arena, nested_scope, result, path.d, next_data.d);
+            FrameF("include %s", path.d) {
+                do_parse(arena, scope, result, path.d, ReadFile(path.d).d);
             }
             break;
         }
