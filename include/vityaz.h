@@ -3,6 +3,8 @@
 #define VITYAZ_H
 #include "tapki.h"
 
+/// --- Lexer
+
 typedef enum {
     TOK_EOF = 0,
     TOK_NEWLINE,
@@ -40,16 +42,21 @@ Token lex_peek(Lexer* lexer, bool* indent);
 
 TAPKI_NORETURN TAPKI_FMT_ATTR(2, 3) void syntax_err(Lexer* lex, const char* fmt, ...);
 
+/// -- Parser
+
 typedef struct {
     Str result;
 } Eval;
 
 // TODO: move these to another .c (not lex!)
-static void eval_part(Arena* arena, Eval* ctx, const char* part, size_t len) {
+static void eval_add_part(Arena* arena, Eval* ctx, const char* part, size_t len) {
     StrAppendF(&ctx->result, "%.*s", (int)len, part);
 }
-static void eval_deref(Arena* arena, Eval* ctx, const char* var, size_t len) {
+static void eval_add_deref(Arena* arena, Eval* ctx, const char* var, size_t len) {
     StrAppendF(&ctx->result, "${%.*s}", (int)len, var);
+}
+static Str eval_expand(Arena* arena, Eval* ctx) {
+    return ctx->result;
 }
 
 void lex_path(Lexer* lexer, Eval* ctx);
@@ -63,8 +70,7 @@ typedef struct {
 } Rule;
 
 typedef struct {
-    bool touched;
-    unsigned depth;
+    int depth;
 } Pool;
 
 typedef struct {
@@ -77,6 +83,10 @@ MapDeclare(Pools, char*, Pool);
 typedef struct {
     Rules rules;
     Pools pools;
+    Vec(Build) builds;
+    // predefines
+    Rule phony;
+    Pool console;
 } NinjaFile;
 
 NinjaFile parse(Arena* arena, const char* file);

@@ -130,12 +130,12 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
             // comment?
         case '$':
             if (lex->ident.size) {
-                eval_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
+                eval_add_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
                 lex->ident.size = 0;
             }
             lex->cursor++;
             if (lex_dollar(lex)) {
-                eval_deref(lex->arena, ctx, lex->ident.d, lex->ident.size);
+                eval_add_deref(lex->arena, ctx, lex->ident.d, lex->ident.size);
             }
             break;
         case '\n':
@@ -150,7 +150,7 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
     }
 done:
     if (lex->ident.size) {
-        eval_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
+        eval_add_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
         lex->ident.size = 0;
     }
 }
