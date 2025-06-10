@@ -1,11 +1,6 @@
 ﻿#include "vityaz.h"
 #include <string.h>
 
-void eval_add_part(Arena* arena, Eval* ctx, const char* str, size_t len, bool is_var) {
-    *VecPush(&ctx->parts) = StrCopy(str, len).d;
-    *VecPush(&ctx->is_var) = is_var;
-}
-
 const char* deref_var(const VarsScope* scope, const char* name)
 {
     while(scope) {
@@ -47,7 +42,7 @@ MapImplement(Pools, STRING_LESS, STRING_EQ);
 
 static void consume(Lexer* lex, Token tok) {
     if (TAPKI_UNLIKELY(lex_next(lex) != tok)) {
-        syntax_err(lex, "'%s' expected, got: '%s'", tok_print(tok), tok_print(lex->tok));
+        syntax_err(lex, "%s expected, got: %s", tok_print(tok), tok_print(lex->tok));
     }
 }
 
@@ -120,20 +115,90 @@ static void parsing_try_commit(Lexer* lex, ParsingState* state) {
     state->output = NULL;
 }
 
-static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
-{
+static Str parse_path(Lexer* lex, VarsScope* scope) {
+    Eval eval = {0};
+    lex_path(lex, &eval);
+    Str res = eval_expand(lex->arena, &eval, scope);
+    ArenaClear(lex->eval_arena);
+    return res;
+}
 
+static Build* parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
+{
+    Arena* arena = lex->arena;
+    Build* build = VecPush(&result->builds);
+    build->scope.prev = scope.vars;
+    {
+        BuildItemType type = OUTPUT_EXPLICIT;
+        while(true) {
+            Token peek = lex_peek(lex);
+            switch (peek) {
+            case TOK_INPUTS:
+                lex_next(lex);
+                goto inputs;
+            case TOK_IMPLICIT:
+                lex_next(lex);
+                type = OUTPUT_IMPLICIT;
+                break;
+            case TOK_EOF:
+            case TOK_NEWLINE:
+                syntax_err(lex, "Unexpected EOF or newline inside 'build' statement");
+            default:
+                break;
+            }
+            Str path = parse_path(lex, scope.vars);
+            *VecPush(&build->items) = (BuildItem){path.d, type};
+        }
+    }
+inputs:
+    consume(lex, TOK_ID);
+    build->rule = deref_rule(scope.rules, lex->id.d);
+    {
+        BuildItemType type = INPUT_EXPLICIT;
+        while(true) {
+            Token peek = lex_peek(lex);
+            switch (peek) {
+            case TOK_IMPLICIT:
+                lex_next(lex);
+                type = INPUT_IMPLICIT;
+                break;
+            case TOK_ORDER_ONLY:
+                lex_next(lex);
+                type = INPUT_ORDER_ONLY;
+                break;
+            case TOK_VALIDATOR:
+                lex_next(lex);
+                type = INPUT_VALIDATOR;
+                break;
+            case TOK_EOF:
+            case TOK_NEWLINE:
+                goto done;
+            default:
+                break;
+            }
+            Str path = parse_path(lex, scope.vars);
+            *VecPush(&build->items) = (BuildItem){path.d, type};
+        }
+    }
+done:
+    parsing_start_new(lex, state, PARSING_BUILD, build);
+    return build;
 }
 
 static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* source_name, const char* data)
 {
     Lexer lex = {source_name, data, data, arena};
+    lex.eval_arena = ArenaCreate(2048);
     ParsingState state = {0};
     while(lex_next(&lex) != TOK_EOF) {
         if (lex.tok == TOK_NEWLINE)
             continue;
         bool indent = lex.indented;
-        if (!indent) {
+        if (indent) {
+            if (lex.tok == TOK_POOL) {
+                lex.tok = TOK_ID;
+            }
+        } else {
             parsing_try_commit(&lex, &state);
         }
         switch (lex.tok) {
@@ -161,11 +226,22 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             break;
         }
         case TOK_DEFAULT: {
-            // todo
+            while(true) {
+                Token peek = lex_peek(&lex);
+                if (peek == TOK_EOF || peek == TOK_NEWLINE) {
+                    break;
+                }
+                *VecPush(&result->defaults) = parse_path(&lex, scope.vars);
+            }
             break;
         }
         case TOK_BUILD: {
-            parse_build(&lex, scope, result, &state);
+            Build* build = parse_build(&lex, scope, result, &state);
+            printf("build");
+            VecForEach(&build->items, it) {
+                printf(" '%s'", it->path);
+            }
+            printf("\n");
             break;
         }
         case TOK_ID: {
@@ -175,8 +251,10 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             Str id = lex.id;
             consume(&lex, TOK_EQ);
             Eval eval = {0};
-            lex_rhs(&lex, &eval);
+            bool persistent_eval = state.mode == PARSING_RULE;
+            lex_rhs(&lex, &eval, persistent_eval);
             if (indent) {
+                printf("  %s = <...>\n", id.d);
                 if (state.output) {
                     parsing_add_var(arena, &state, id.d, &eval, scope.vars);
                 } else {
@@ -184,15 +262,15 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
                 }
             } else {
                 Str value = eval_expand(arena, &eval, scope.vars);
+                printf("%s = '%s'\n", id.d, value.d);
                 *StrMap_At(&scope.vars->data, id.d) = value;
             }
+            ArenaClear(lex.eval_arena);
             break;
         }
         case TOK_SUBNINJA:
         case TOK_INCLUDE: {
-            Eval eval = {0};
-            lex_path(&lex, &eval);
-            Str path = eval_expand(arena, &eval, scope.vars);
+            Str path = parse_path(&lex, scope.vars);
             const char* action = lex.tok == TOK_INCLUDE ? "include" : "subninja";
             Scope nested_scope = scope;
             if (lex.tok == TOK_SUBNINJA) {
@@ -214,6 +292,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
         }
     }
     parsing_try_commit(&lex, &state);
+    ArenaFree(lex.eval_arena);
 }
 
 NinjaFile* parse(Arena* arena, const char* file)

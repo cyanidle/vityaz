@@ -121,46 +121,51 @@ static bool lex_dollar(Lexer* lex)
     return false;
 }
 
-static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
-    Arena* arena = lex->arena;
+static void eval_add_part(Arena* arena, Eval* ctx, const char* str, size_t len, bool is_var) {
+    *VecPush(&ctx->parts) = StrCopy(str, len).d;
+    *VecPush(&ctx->is_var) = is_var;
+}
+
+static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path, bool persist) {
     lex->id = (Str){0};
     eat_ws(lex);
+    Arena* eval_arena = persist ? lex->arena : lex->eval_arena;
     while(true) {
         switch (lex->cursor[0]) {
-            // comment?
         case '$':
             if (lex->id.size) {
-                eval_add_part(lex->arena, ctx, lex->id.d, lex->id.size, false);
+                eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
                 lex->id.size = 0;
             }
             lex->cursor++;
             if (lex_dollar(lex)) {
-                eval_add_part(lex->arena, ctx, lex->id.d, lex->id.size, true);
+                eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, true);
             }
             break;
         case '\n':
         case '\0':
             goto done;
+        case ':':
         case ' ': // terminates string only if path
             if (is_path)
                 goto done;
         default:
-            *VecPush(&lex->id) = *lex->cursor++;
+            *TapkiVecPush(lex->arena, &lex->id) = *lex->cursor++;
         }
     }
 done:
     if (lex->id.size) {
-        eval_add_part(lex->arena, ctx, lex->id.d, lex->id.size, false);
+        eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
         lex->id.size = 0;
     }
 }
 
 void lex_path(Lexer* lexer, Eval* ctx) {
-    return lex_evalstring(lexer, ctx, true);
+    return lex_evalstring(lexer, ctx, true, false);
 }
 
-void lex_rhs(Lexer* lexer, Eval* ctx) {
-    return lex_evalstring(lexer, ctx, false);
+void lex_rhs(Lexer* lexer, Eval* ctx, bool persist) {
+    return lex_evalstring(lexer, ctx, false, persist);
 }
 
 static Token do_lex_next(Lexer* lex, bool peek)
@@ -183,7 +188,7 @@ again:
         return TOK_NEWLINE;
     case ':':
         lex->cursor++;
-        return TOK_EXPLICIT;
+        return TOK_INPUTS;
     case '=':
         lex->cursor++;
         return TOK_EQ;
@@ -254,7 +259,7 @@ const char* tok_print(Token tok)
     case TOK_RULE: return "'rule'";
     case TOK_BUILD: return "'build'";
     case TOK_POOL: return "'pool'";
-    case TOK_EXPLICIT: return "':'";
+    case TOK_INPUTS: return "':'";
     case TOK_IMPLICIT: return "'|'";
     case TOK_ORDER_ONLY: return "'||'";
     case TOK_VALIDATOR: return "'|@'";

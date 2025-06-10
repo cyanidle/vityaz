@@ -13,7 +13,7 @@ int main(int argc, char** argv)
         {"--file,-f", &file, .metavar="FILE", .help="specify input build file [default=build.ninja]"},
         {"--dry,-n", &dry_run, .flag=true, .help="dry run (don't run commands but act like they succeeded)"},
         {"targets", &targets, .many=true, .help="if targets are unspecified, builds the 'default' target (see ninja manual)."},
-        {0}
+        {0},
     };
     if (!targets.size) {
         VecAppend(&targets, S("default"));
@@ -23,7 +23,8 @@ int main(int argc, char** argv)
         goto end;
     }
     if (change.size) {
-        // todo
+        fprintf(stderr, "Changing directory to: %s\n", change.d);
+        chdir(change.d);
     }
     parse(arena, file.d);
 end:
