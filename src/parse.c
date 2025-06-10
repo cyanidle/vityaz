@@ -9,16 +9,6 @@ static void consume(Lexer* lex, Token tok) {
     }
 }
 
-static void parse_rule(Lexer* lex) {
-    bool indent;
-    consume(lex, TOK_ID);
-    Str name = lex->ident;
-    consume(lex, TOK_NEWLINE);
-    while(true) {
-        // todo
-    }
-}
-
 void parse(Arena* arena, const char* file)
 {
     Str data = ReadFile(file);
@@ -33,8 +23,16 @@ void parse(Arena* arena, const char* file)
         switch (tok) {
         case TOK_EOF:
             return;
+        case TOK_POOL: {
+            consume(&lex, TOK_ID);
+            consume(&lex, TOK_NEWLINE);
+            Str name = lex.ident;
+            break;
+        }
         case TOK_RULE: {
-            parse_rule(&lex);
+            consume(&lex, TOK_ID);
+            consume(&lex, TOK_NEWLINE);
+            Str name = lex.ident;
             break;
         }
         case TOK_ID: {
@@ -52,6 +50,9 @@ void parse(Arena* arena, const char* file)
             lex_path(&lex, &eval);
             parse(arena, eval.result.d);
             break;
+        }
+        default: {
+            syntax_err(&lex, "Unexpected token: %s", tok_print(tok));
         }
         }
         last = tok;
