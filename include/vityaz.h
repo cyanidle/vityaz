@@ -23,6 +23,8 @@ typedef enum {
     TOK_IMPLICIT, // |
     TOK_ORDER_ONLY, // ||
     TOK_VALIDATOR, // |@
+
+    TOK_INVALID,
 } Token;
 
 const char* tok_print(Token tok);
@@ -32,35 +34,40 @@ typedef struct Lexer {
     const char* begin;
     const char* cursor;
     Arena* arena;
-    Str ident; //should be copied by lexer user!
+
+    // should be copied by lexer user!
+    Str id;
+    bool indented;
+
     Token last;
     Token tok;
 } Lexer;
 
-Token lex_next(Lexer* lexer, bool* indent);
-Token lex_peek(Lexer* lexer, bool* indent);
+Token lex_next(Lexer* lexer);
+Token lex_peek(Lexer* lexer);
+
+struct Eval;
+
+void lex_path(Lexer* lexer, struct Eval* ctx);
+void lex_rhs(Lexer* lexer, struct Eval* ctx);
 
 TAPKI_NORETURN TAPKI_FMT_ATTR(2, 3) void syntax_err(Lexer* lex, const char* fmt, ...);
 
 /// -- Parser
 
-typedef struct {
-    Str result;
+typedef struct Eval {
+    Vec(const char*) parts;
+    Vec(bool) is_var;
 } Eval;
 
-// TODO: move these to another .c (not lex!)
-static void eval_add_part(Arena* arena, Eval* ctx, const char* part, size_t len) {
-    StrAppendF(&ctx->result, "%.*s", (int)len, part);
-}
-static void eval_add_deref(Arena* arena, Eval* ctx, const char* var, size_t len) {
-    StrAppendF(&ctx->result, "${%.*s}", (int)len, var);
-}
-static Str eval_expand(Arena* arena, Eval* ctx) {
-    return ctx->result;
-}
+typedef struct Scope {
+    StrMap vars;
+    struct Scope* prev;
+} Scope;
 
-void lex_path(Lexer* lexer, Eval* ctx);
-void lex_rhs(Lexer* lexer, Eval* ctx);
+const char* deref_var(const Scope* scope, const char* name);
+void eval_add_part(Arena* arena, Eval* ctx, const char* str, size_t len, bool is_var);
+Str eval_expand(Arena* arena, Eval* ctx, const Scope* scope);
 
 MapDeclare(LazyVars, char*, Eval);
 
@@ -70,26 +77,26 @@ typedef struct {
 } Rule;
 
 typedef struct {
-    int depth;
+    int32_t depth;
 } Pool;
 
 typedef struct {
-
+    Rule* rule;
+    Scope scope;
 } Build;
 
 MapDeclare(Rules, char*, Rule);
 MapDeclare(Pools, char*, Pool);
+typedef Vec(Build) Builds;
 
 typedef struct {
     Rules rules;
     Pools pools;
-    Vec(Build) builds;
-    // predefines
-    Rule phony;
-    Pool console;
+    Builds builds;
+    Scope root_scope;
 } NinjaFile;
 
-NinjaFile parse(Arena* arena, const char* file);
+NinjaFile* parse(Arena* arena, const char* file);
 
 #endif //VITYAZ_H
 

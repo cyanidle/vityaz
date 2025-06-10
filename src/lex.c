@@ -60,7 +60,7 @@ static void eat_ws(Lexer* lex) {
 
 static void lex_id(Lexer* lex, bool bracket) {
     Arena* arena = lex->arena;
-    lex->ident = (Str){""};
+    lex->id = (Str){""};
     while(true) {
         char curr = *lex->cursor;
         switch (curr) {
@@ -74,7 +74,7 @@ static void lex_id(Lexer* lex, bool bracket) {
         case '\n':
             goto done;
         case IDENT_BODY:
-            *VecPush(&lex->ident) = curr;
+            *VecPush(&lex->id) = curr;
             lex->cursor++;
             break;
         case '}':
@@ -88,10 +88,10 @@ static void lex_id(Lexer* lex, bool bracket) {
         }
     }
 done:
-    if (lex->ident.size) {
-        *VecPush(&lex->ident) = 0;
+    if (lex->id.size) {
+        *VecPush(&lex->id) = 0;
     }
-    VecShrink(&lex->ident);
+    VecShrink(&lex->id);
 }
 
 // return if deref
@@ -105,7 +105,7 @@ static bool lex_dollar(Lexer* lex)
     case '$':
     case ':':
     case '\n':
-        *VecPush(&lex->ident) = lex->cursor[0];
+        *VecPush(&lex->id) = lex->cursor[0];
         lex->cursor++;
         break;
     case '{':
@@ -123,19 +123,19 @@ static bool lex_dollar(Lexer* lex)
 
 static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
     Arena* arena = lex->arena;
-    lex->ident = (Str){0};
+    lex->id = (Str){0};
     eat_ws(lex);
     while(true) {
         switch (lex->cursor[0]) {
             // comment?
         case '$':
-            if (lex->ident.size) {
-                eval_add_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
-                lex->ident.size = 0;
+            if (lex->id.size) {
+                eval_add_part(lex->arena, ctx, lex->id.d, lex->id.size, false);
+                lex->id.size = 0;
             }
             lex->cursor++;
             if (lex_dollar(lex)) {
-                eval_add_deref(lex->arena, ctx, lex->ident.d, lex->ident.size);
+                eval_add_part(lex->arena, ctx, lex->id.d, lex->id.size, true);
             }
             break;
         case '\n':
@@ -145,13 +145,13 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
             if (is_path)
                 goto done;
         default:
-            *VecPush(&lex->ident) = *lex->cursor++;
+            *VecPush(&lex->id) = *lex->cursor++;
         }
     }
 done:
-    if (lex->ident.size) {
-        eval_add_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
-        lex->ident.size = 0;
+    if (lex->id.size) {
+        eval_add_part(lex->arena, ctx, lex->id.d, lex->id.size, false);
+        lex->id.size = 0;
     }
 }
 
@@ -163,10 +163,10 @@ void lex_rhs(Lexer* lexer, Eval* ctx) {
     return lex_evalstring(lexer, ctx, false);
 }
 
-static Token do_lex_next(Lexer* lex, bool *indent, bool peek)
+static Token do_lex_next(Lexer* lex, bool peek)
 {
 again:
-    *indent = *lex->cursor == ' ';
+    lex->indented = *lex->cursor == ' ';
     eat_ws(lex);
     if (TAPKI_UNLIKELY(!*lex->cursor)) {
         return TOK_EOF;
@@ -203,38 +203,39 @@ again:
         if (peek)
             return TOK_ID;
         lex_id(lex, false);
-        if (strcmp(lex->ident.d, "build") == 0) {
+        if (STRING_EQ(lex->id.d, "build")) {
             return TOK_BUILD;
-        } else if (strcmp(lex->ident.d, "rule") == 0) {
+        } else if (STRING_EQ(lex->id.d, "rule")) {
             return TOK_RULE;
-        } else if (strcmp(lex->ident.d, "include") == 0) {
+        } else if (STRING_EQ(lex->id.d, "include")) {
             return TOK_INCLUDE;
-        } else if (strcmp(lex->ident.d, "subninja") == 0) {
+        } else if (STRING_EQ(lex->id.d, "subninja")) {
             return TOK_SUBNINJA;
-        } else if (strcmp(lex->ident.d, "default") == 0) {
+        } else if (STRING_EQ(lex->id.d, "default")) {
             return TOK_DEFAULT;
-        } else if (strcmp(lex->ident.d, "pool") == 0) {
+        } else if (STRING_EQ(lex->id.d, "pool")) {
             return TOK_POOL;
         } else {
             return TOK_ID;
         }
     default: {
+        if (peek) return TOK_INVALID;
         syntax_err(lex, "Unexpected character: '%c'", *lex->cursor);
     }
     }
 }
 
-Token lex_peek(Lexer* lex, bool *indent)
+Token lex_peek(Lexer* lex)
 {
     const char* was = lex->cursor;
-    Token peek = do_lex_next(lex, indent, true);
+    Token peek = do_lex_next(lex, true);
     lex->cursor = was;
     return peek;
 }
 
-Token lex_next(Lexer* lex, bool *indent)
+Token lex_next(Lexer* lex)
 {
-    Token next = do_lex_next(lex, indent, false);
+    Token next = do_lex_next(lex, false);
     lex->last = lex->tok;
     lex->tok = next;
     return next;
@@ -243,20 +244,21 @@ Token lex_next(Lexer* lex, bool *indent)
 const char* tok_print(Token tok)
 {
     switch (tok) {
-    case TOK_EOF: return "TOK_EOF";
-    case TOK_NEWLINE: return "TOK_NEWLINE";
-    case TOK_EQ: return "TOK_EQ";
-    case TOK_ID: return "TOK_ID";
-    case TOK_INCLUDE: return "TOK_INCLUDE";
-    case TOK_DEFAULT: return "TOK_DEFAULT";
-    case TOK_SUBNINJA: return "TOK_SUBNINJA";
-    case TOK_RULE: return "TOK_RULE";
-    case TOK_BUILD: return "TOK_BUILD";
-    case TOK_POOL: return "TOK_POOL";
-    case TOK_EXPLICIT: return "TOK_EXPLICIT";
-    case TOK_IMPLICIT: return "TOK_IMPLICIT";
-    case TOK_ORDER_ONLY: return "TOK_ORDER_ONLY";
-    case TOK_VALIDATOR: return "TOK_VALIDATOR";
+    case TOK_EOF: return "<eof>";
+    case TOK_NEWLINE: return "<newline>";
+    case TOK_EQ: return "'='";
+    case TOK_ID: return "<identificator>";
+    case TOK_INCLUDE: return "'include'";
+    case TOK_DEFAULT: return "'default'";
+    case TOK_SUBNINJA: return "'subninja'";
+    case TOK_RULE: return "'rule'";
+    case TOK_BUILD: return "'build'";
+    case TOK_POOL: return "'pool'";
+    case TOK_EXPLICIT: return "':'";
+    case TOK_IMPLICIT: return "'|'";
+    case TOK_ORDER_ONLY: return "'||'";
+    case TOK_VALIDATOR: return "'|@'";
+    case TOK_INVALID: return "<invalid>";
     }
     return "<invalid>";
 }
