@@ -20,7 +20,7 @@ typedef struct {
 } Rule;
 
 typedef struct {
-    int32_t depth;
+    uint32_t depth;
 } Pool;
 
 typedef enum {
@@ -67,6 +67,10 @@ typedef struct {
     StrVec defaults;
     RulesScope root_rules;
     VarsScope root_vars;
+
+    Pool* kConsole;
+    Pool* kDefault;
+    Rule* kPhony;
 } NinjaFile;
 
 NinjaFile* parse(Arena* arena, const char* file);

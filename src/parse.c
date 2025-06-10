@@ -92,7 +92,7 @@ static void parsing_add_var(Arena* arena, ParsingState* state, const char* name,
     case PARSING_POOL: {
         Pool* pool = (Pool*)state->output;
         if (STRING_EQ(name, "depth")) {
-            pool->depth = ToI32(eval_expand(arena, eval, scope).d);
+            pool->depth = ToU32(eval_expand(arena, eval, scope).d);
         }
         break;
     }
@@ -287,9 +287,21 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
 NinjaFile* parse(Arena* arena, const char* file)
 {
     NinjaFile* result = ArenaAlloc(arena, sizeof(*result));
-    Rule* phony = Rules_At(arena, &result->root_rules.data, "phony");
-    *VecPush(&phony->command.parts) = "phony";
-    Pools_At(arena, &result->pools, "console")->depth = 1;
+    {
+        Rule* phony = Rules_At(arena, &result->root_rules.data, "phony");
+        result->kPhony = phony;
+        *VecPush(&phony->command.parts) = "phony";
+    }
+    {
+        Pool* console = Pools_At(arena, &result->pools, "console");
+        console->depth = 1;
+        result->kConsole = console;
+    }
+    {
+        Pool* console = Pools_At(arena, &result->pools, "");
+        console->depth = 0;
+        result->kDefault = console;
+    }
     Str data = ReadFile(file);
     Scope scope = {&result->root_rules, &result->root_vars};
     do_parse(arena, scope, result, file, data.d);
