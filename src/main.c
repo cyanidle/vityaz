@@ -26,7 +26,10 @@ int main(int argc, char** argv)
         fprintf(stderr, "Changing directory to: %s\n", change.d);
         chdir(change.d);
     }
-    parse(arena, file.d);
+    NinjaFile* nf = parse(arena, file.d);
+    if (!targets.size) {
+        targets = nf->defaults;
+    }
 end:
     ArenaFree(arena);
     return ret;

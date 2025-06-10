@@ -208,6 +208,9 @@ again:
         if (peek)
             return TOK_ID;
         lex_id(lex, false);
+        if (lex->indented) {
+            return TOK_ID;
+        }
         if (STRING_EQ(lex->id.d, "build")) {
             return TOK_BUILD;
         } else if (STRING_EQ(lex->id.d, "rule")) {
