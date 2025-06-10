@@ -31,6 +31,8 @@ typedef struct Lexer {
     const char* cursor;
     Arena* arena;
     Str ident; //should be copied by lexer user!
+    Token last;
+    Token tok;
 } Lexer;
 
 Token lex_next(Lexer* lexer, bool* indent);
@@ -39,25 +41,45 @@ Token lex_peek(Lexer* lexer, bool* indent);
 TAPKI_NORETURN TAPKI_FMT_ATTR(2, 3) void syntax_err(Lexer* lex, const char* fmt, ...);
 
 typedef struct {
-    Arena* arena;
     Str result;
 } Eval;
 
 // TODO: move these to another .c (not lex!)
-static void eval_part(Eval* ctx, const char* part, size_t len) {
-    Arena* arena = ctx->arena;
+static void eval_part(Arena* arena, Eval* ctx, const char* part, size_t len) {
     StrAppendF(&ctx->result, "%.*s", (int)len, part);
 }
-static void eval_deref(Eval* ctx, const char* var, size_t len) {
-    Arena* arena = ctx->arena;
+static void eval_deref(Arena* arena, Eval* ctx, const char* var, size_t len) {
     StrAppendF(&ctx->result, "${%.*s}", (int)len, var);
 }
 
 void lex_path(Lexer* lexer, Eval* ctx);
 void lex_rhs(Lexer* lexer, Eval* ctx);
 
+MapDeclare(LazyVars, char*, Eval);
 
-void parse(Arena* arena, const char* file);
+typedef struct {
+    Eval command;
+    LazyVars vars;
+} Rule;
+
+typedef struct {
+    bool touched;
+    unsigned depth;
+} Pool;
+
+typedef struct {
+
+} Build;
+
+MapDeclare(Rules, char*, Rule);
+MapDeclare(Pools, char*, Pool);
+
+typedef struct {
+    Rules rules;
+    Pools pools;
+} NinjaFile;
+
+NinjaFile parse(Arena* arena, const char* file);
 
 #endif //VITYAZ_H
 

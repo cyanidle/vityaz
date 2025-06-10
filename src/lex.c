@@ -36,6 +36,7 @@ static void eat_ws(Lexer* lex) {
         case ' ':
         case '\r':
             lex->cursor++;
+            break;
         default:
             return;
         case '\t':
@@ -129,12 +130,12 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
             // comment?
         case '$':
             if (lex->ident.size) {
-                eval_part(ctx, lex->ident.d, lex->ident.size);
+                eval_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
                 lex->ident.size = 0;
             }
             lex->cursor++;
             if (lex_dollar(lex)) {
-                eval_deref(ctx, lex->ident.d, lex->ident.size);
+                eval_deref(lex->arena, ctx, lex->ident.d, lex->ident.size);
             }
             break;
         case '\n':
@@ -149,7 +150,7 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path) {
     }
 done:
     if (lex->ident.size) {
-        eval_part(ctx, lex->ident.d, lex->ident.size);
+        eval_part(lex->arena, ctx, lex->ident.d, lex->ident.size);
         lex->ident.size = 0;
     }
 }
@@ -164,9 +165,9 @@ void lex_rhs(Lexer* lexer, Eval* ctx) {
 
 static Token do_lex_next(Lexer* lex, bool *indent, bool peek)
 {
+again:
     *indent = *lex->cursor == ' ';
     eat_ws(lex);
-again:
     if (TAPKI_UNLIKELY(!*lex->cursor)) {
         return TOK_EOF;
     }
@@ -233,7 +234,10 @@ Token lex_peek(Lexer* lex, bool *indent)
 
 Token lex_next(Lexer* lex, bool *indent)
 {
-    return do_lex_next(lex, indent, false);
+    Token next = do_lex_next(lex, indent, false);
+    lex->last = lex->tok;
+    lex->tok = next;
+    return next;
 }
 
 const char* tok_print(Token tok)

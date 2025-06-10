@@ -10,4 +10,4 @@ add_executable(vityaz
     src/lex.c
     src/parse.c
 )
-target_include_directories(vityaz PRIVATE include deps/tapki)
+target_include_directories(vityaz PRIVATE include tapki)

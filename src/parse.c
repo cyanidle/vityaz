@@ -1,60 +1,79 @@
 ﻿#include "vityaz.h"
 #include <string.h>
 
+MapImplement(LazyVars, STRING_LESS, STRING_EQ);
+MapImplement(Rules, STRING_LESS, STRING_EQ);
+MapImplement(Pools, STRING_LESS, STRING_EQ);
+
 static void consume(Lexer* lex, Token tok) {
     bool indent;
-    Token got;
-    if (TAPKI_UNLIKELY((got = lex_next(lex, &indent)) != tok)) {
-        syntax_err(lex, "'%s' expected, got: '%s'", tok_print(tok), tok_print(got));
+    if (TAPKI_UNLIKELY(lex_next(lex, &indent) != tok)) {
+        syntax_err(lex, "'%s' expected, got: '%s'", tok_print(tok), tok_print(lex->tok));
     }
 }
 
-void parse(Arena* arena, const char* file)
+NinjaFile parse(Arena* arena, const char* file)
 {
     Str data = ReadFile(file);
     Lexer lex = {file, data.d, data.d, arena};
-    bool ident;
-    Token last = TOK_EOF;
-    Token tok;
-    while((tok = lex_next(&lex, &ident)) != TOK_EOF) {
-        if (tok != TOK_NEWLINE) {
-            printf("%s%s %s\n", ident ? "  " : "", tok_print(tok), tok == TOK_ID ? lex.ident.d : "");
-        }
-        switch (tok) {
-        case TOK_EOF:
-            return;
+    bool indent;
+    NinjaFile result = {0};
+    Rule* rule = 0;
+    Pool* pool = 0;
+    Build* build = 0;
+    while(lex_next(&lex, &indent) != TOK_EOF) {
+        switch (lex.tok) {
+        case TOK_NEWLINE:
+            break;
         case TOK_POOL: {
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.ident;
+
             break;
         }
         case TOK_RULE: {
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.ident;
+            rule = Rules_At(arena, &result.rules, name.d);
+            if (rule->command.result.d) {
+                syntax_err(&lex, "Rule already defined: %s", name.d);
+            }
+            printf("rule '%s'\n", name.d);
             break;
         }
         case TOK_ID: {
-            if (last != TOK_NEWLINE) {
-                syntax_err(&lex, "variable name must follow a newline, last was: %s", tok_print(last));
+            if (lex.last != TOK_NEWLINE) {
+                syntax_err(&lex, "variable name must follow a newline, last was: %s", tok_print(lex.last));
             }
+            Str id = lex.ident;
             consume(&lex, TOK_EQ);
-            Eval eval = {arena};
+            Eval eval = {0};
             lex_rhs(&lex, &eval);
-            printf("\"%s\"\n", eval.result.d);
+            if (rule) {
+                //Rules_At( id.d)
+            } else if (build) {
+
+            } else if (pool) {
+
+            } else {
+
+            }
+            printf("%s%s = '%s'\n", indent ? "  " : "", id.d, eval.result.d);
             break;
         }
         case TOK_INCLUDE: {
-            Eval eval = {arena};
+            Eval eval = {0};
             lex_path(&lex, &eval);
+            printf("include(%s)\n", eval.result.d);
             parse(arena, eval.result.d);
             break;
         }
         default: {
-            syntax_err(&lex, "Unexpected token: %s", tok_print(tok));
+            syntax_err(&lex, "Unexpected token: %s", tok_print(lex.tok));
         }
         }
-        last = tok;
     }
+    return result;
 }
