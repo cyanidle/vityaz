@@ -23,8 +23,9 @@ int main(int argc, char** argv)
         goto end;
     }
     if (change.size) {
-        fprintf(stderr, "Changing directory to: %s\n", change.d);
-        chdir(change.d);
+        fprintf(stderr, "vityaz: Changing directory to: %s\n", change.d);
+        fflush(stderr);
+        OsChdir(change.d);
     }
     NinjaFile* nf = parse(arena, file.d);
     if (!targets.size) {

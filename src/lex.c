@@ -94,7 +94,7 @@ done:
     VecShrink(&lex->id);
 }
 
-// return if deref
+// return true if deref
 static bool lex_dollar(Lexer* lex)
 {
     Arena* arena = lex->arena;

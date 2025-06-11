@@ -3,6 +3,7 @@
 #define VITYAZ_H
 #include "tapki.h"
 #include "lex.h"
+#include "os.h"
 
 typedef struct VarsScope {
     StrMap data;
@@ -41,7 +42,7 @@ typedef struct {
 typedef Vec(BuildItem) BuildItems;
 
 typedef struct {
-    Rule* rule;
+    const Rule* rule;
     VarsScope scope;
     BuildItems items;
 } Build;
@@ -67,11 +68,11 @@ typedef struct {
     StrVec defaults;
     RulesScope root_rules;
     VarsScope root_vars;
-
-    Pool* kConsole;
-    Pool* kDefault;
-    Rule* kPhony;
 } NinjaFile;
+
+extern Rule phony_rule;
+extern Pool console_pool;
+extern Pool default_pool;
 
 NinjaFile* parse(Arena* arena, const char* file);
 

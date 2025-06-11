@@ -13,8 +13,27 @@ const char* deref_var(const VarsScope* scope, const char* name)
     Die("Could not deref variable: %s", name);
 }
 
-static Rule* deref_rule(const RulesScope* scope, const char* name)
+static bool _phony_is_var = false;
+static const char* _phony_command = "phony";
+Rule phony_rule = {.command = {.parts = {&_phony_command, 1, 1}, .is_var={&_phony_is_var, 1, 1}}, .vars = {0}};
+Pool console_pool = {1};
+Pool default_pool = {0};
+
+static Pool* lookup_pool(Arena* arena, Pools* pools, const char* name) {
+    if (STRING_EQ(name, "console")) {
+        return &console_pool;
+    } else if (*name == 0) {
+        return &default_pool;
+    } else {
+        return Pools_At(arena, pools, name);
+    }
+}
+
+static const Rule* lookup_rule(const RulesScope* scope, const char* name)
 {
+    if (STRING_EQ(name, "phony")) {
+        return &phony_rule;
+    }
     while(scope) {
         Rule* result = Rules_Find(&scope->data, name);
         if (result) {
@@ -92,7 +111,9 @@ static void parsing_add_var(Arena* arena, ParsingState* state, const char* name,
     case PARSING_POOL: {
         Pool* pool = (Pool*)state->output;
         if (STRING_EQ(name, "depth")) {
-            pool->depth = ToU32(eval_expand(arena, eval, scope).d);
+            FrameF("Parsing pool depth") {
+                pool->depth = ToU32(eval_expand(arena, eval, scope).d);
+            }
         }
         break;
     }
@@ -152,7 +173,7 @@ static Build* parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingSta
     }
 inputs:
     consume(lex, TOK_ID);
-    build->rule = deref_rule(scope.rules, lex->id.d);
+    build->rule = lookup_rule(scope.rules, lex->id.d);
     {
         BuildItemType type = INPUT_EXPLICIT;
         while(true) {
@@ -202,7 +223,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
-            Pool* pool = Pools_At(arena, &result->pools, name.d);
+            Pool* pool = lookup_pool(arena, &result->pools, name.d);
             if (pool->depth) {
                 syntax_err(&lex, "Pool already defined: %s", name.d);
             }
@@ -213,8 +234,11 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
+            if (TAPKI_UNLIKELY(STRING_EQ("phony", name.d))) {
+                syntax_err(&lex, "Cannot redefine 'phony' rule");
+            }
             Rule* rule = Rules_At(arena, &scope.rules->data, name.d);
-            if (rule->command.parts.d) {
+            if (TAPKI_UNLIKELY(rule->command.parts.d)) {
                 syntax_err(&lex, "Rule already defined: %s", name.d);
             }
             parsing_start_new(&lex, &state, PARSING_RULE, rule);
@@ -287,21 +311,6 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
 NinjaFile* parse(Arena* arena, const char* file)
 {
     NinjaFile* result = ArenaAlloc(arena, sizeof(*result));
-    {
-        Rule* phony = Rules_At(arena, &result->root_rules.data, "phony");
-        result->kPhony = phony;
-        *VecPush(&phony->command.parts) = "phony";
-    }
-    {
-        Pool* console = Pools_At(arena, &result->pools, "console");
-        console->depth = 1;
-        result->kConsole = console;
-    }
-    {
-        Pool* console = Pools_At(arena, &result->pools, "");
-        console->depth = 0;
-        result->kDefault = console;
-    }
     Str data = ReadFile(file);
     Scope scope = {&result->root_rules, &result->root_vars};
     do_parse(arena, scope, result, file, data.d);
