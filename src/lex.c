@@ -134,12 +134,11 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path, bool persist) {
         switch (lex->cursor[0]) {
         case '$':
             lex->cursor++;
+            Str was = lex->id;
             if (lex_dollar(lex)) {
-                if (lex->id.size) {
-                    eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
-                    lex->id.size = 0;
-                }
+                eval_add_part(eval_arena, ctx, was.d, was.size, false); // commit non-var
                 eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, true);
+                lex->id.size = 0;
             }
             break;
         case '\n':
