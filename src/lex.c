@@ -133,12 +133,12 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path, bool persist) {
     while(true) {
         switch (lex->cursor[0]) {
         case '$':
-            if (lex->id.size) {
-                eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
-                lex->id.size = 0;
-            }
             lex->cursor++;
             if (lex_dollar(lex)) {
+                if (lex->id.size) {
+                    eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
+                    lex->id.size = 0;
+                }
                 eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, true);
             }
             break;
@@ -150,12 +150,17 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path, bool persist) {
             if (is_path)
                 goto done;
         default:
-            *TapkiVecPush(lex->arena, &lex->id) = *lex->cursor++;
+            *TapkiVecPush(eval_arena, &lex->id) = *lex->cursor++;
         }
     }
 done:
     if (lex->id.size) {
-        eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
+        if (ctx->is_var.size) {
+            eval_add_part(eval_arena, ctx, lex->id.d, lex->id.size, false);
+        } else {
+            ctx->single.d = lex->id.d;
+            ctx->single.len = lex->id.size;
+        }
         lex->id.size = 0;
     }
 }

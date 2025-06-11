@@ -46,8 +46,14 @@ Token lex_next(Lexer* lexer);
 Token lex_peek(Lexer* lexer);
 
 typedef struct Eval {
-    Vec(const char*) parts;
-    Vec(bool) is_var;
+    union {
+        Vec(const char*) parts;
+        struct {
+            const char* d; //not null-terminated!
+            size_t len;
+        } single;
+    };
+    Vec(bool) is_var; //if size==0, then whole Eval is one token (inside single.d)
 } Eval;
 
 void lex_path(Lexer* lexer, struct Eval* ctx);

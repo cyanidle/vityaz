@@ -45,6 +45,9 @@ static const Rule* lookup_rule(const RulesScope* scope, const char* name)
 }
 
 Str eval_expand(Arena* arena, Eval* ctx, const VarsScope* scope) {
+    if (!ctx->is_var.size) {
+        return StrCopy(ctx->single.d, ctx->single.len);
+    }
     Str result = {0};
     for (size_t i = 0; i < ctx->parts.size; ++i) {
         bool is_var = ctx->is_var.d[i];
