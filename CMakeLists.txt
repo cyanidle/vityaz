@@ -9,6 +9,7 @@ add_executable(vityaz
     src/main.c
     src/lex.c
     src/parse.c
+    src/graph.c
     $<$<BOOL:${WIN32}>:src/os-win.c>
     $<$<BOOL:${UNIX}>:src/os-posix.c>
 )
