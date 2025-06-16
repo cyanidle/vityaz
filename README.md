@@ -7,3 +7,4 @@
 - [ ] Configurable status printing
 - [ ] Deps database recompaction
 - [ ] dyndep
+- [ ] Tapki: move from sorted vectors to actual hash maps
