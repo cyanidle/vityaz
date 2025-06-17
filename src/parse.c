@@ -146,7 +146,7 @@ static Str parse_path(Lexer* lex, VarsScope* scope) {
 }
 
 static SourceLoc get_loc(Lexer* lex) {
-    return (SourceLoc){lex->begin, lex->cursor - lex->begin, lex->source_name};
+    return (SourceLoc){lex->source, lex->cursor - lex->source->data};
 }
 
 static Build* parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
@@ -213,7 +213,10 @@ done:
 
 static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* source_name, const char* data)
 {
-    Lexer lex = {source_name, data, data, arena};
+    SourceLocStatic* source = ArenaAlloc(arena, sizeof(*source));
+    source->data = data;
+    source->name = source_name;
+    Lexer lex = {source, data, arena};
     lex.eval_arena = ArenaCreate(2048);
     ParsingState state = {0};
     while(lex_next(&lex) != TOK_EOF) {

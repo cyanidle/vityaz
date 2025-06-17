@@ -15,12 +15,6 @@ Str eval_expand(Arena* arena, Eval* ctx, const VarsScope* scope);
 
 MapDeclare(LazyVars, char*, Eval);
 
-typedef struct SourceLoc {
-    const char* source;
-    size_t offset;
-    const char* source_name;
-} SourceLoc;
-
 typedef struct {
     Eval command;
     LazyVars vars;

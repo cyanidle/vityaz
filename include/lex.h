@@ -27,9 +27,19 @@ typedef enum {
 
 const char* tok_print(Token tok);
 
+// static part of source location (shared by multiple parsed entities
+typedef struct SourceLocStatic {
+    const char* data;
+    const char* name;
+} SourceLocStatic;
+
+typedef struct SourceLoc {
+    const SourceLocStatic* origin;
+    size_t offset;
+} SourceLoc;
+
 typedef struct Lexer {
-    const char* source_name;
-    const char* begin;
+    const SourceLocStatic* source;
     const char* cursor;
     Arena* arena;
     Arena* eval_arena;

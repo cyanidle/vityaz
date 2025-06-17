@@ -3,7 +3,7 @@
 
 void syntax_err(Lexer* lex, const char* fmt, ...) {
     size_t line = 1, col = 0;
-    for(const char* it = lex->begin; it != lex->cursor; ++it) {
+    for(const char* it = lex->source->data; it != lex->cursor; ++it) {
         if (*it == '\n') {
             line++;
             col = 0;
@@ -15,7 +15,7 @@ void syntax_err(Lexer* lex, const char* fmt, ...) {
     va_start(va, fmt);
     Str msg = TapkiVF(lex->arena, fmt, va);
     va_end(va);
-    Die("%s:%zu (col %zu) => syntax error: %s", lex->source_name, line, col, msg.d);
+    Die("%s:%zu (col %zu) => syntax error: %s", lex->source->name, line, col, msg.d);
 }
 
 static void eat_comment(Lexer* lex) {
