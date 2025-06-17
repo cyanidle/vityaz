@@ -71,6 +71,7 @@ static void lex_id(Lexer* lex, bool bracket) {
         case '\0':
         case '\r':
             lex->cursor++;
+        case '"':
         case '\n':
             goto done;
         case IDENT_BODY:
