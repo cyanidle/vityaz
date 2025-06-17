@@ -13,6 +13,7 @@ typedef struct Edge {
     const VarsScope* scope;
     Edges inputs; // explicit, implicit, order-only
     Edges ouputs; // explicit, implicit
+    const Edges* validators; // may be null
 } Edge;
 
 #endif //VITYAZ_GRAPH_H

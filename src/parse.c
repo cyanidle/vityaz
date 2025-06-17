@@ -13,9 +13,7 @@ const char* deref_var(const VarsScope* scope, const char* name)
     Die("Could not deref variable: %s", name);
 }
 
-static bool _phony_is_var = false;
-static const char* _phony_command = "phony";
-Rule phony_rule = {.command = {.parts = {&_phony_command, 1, 1}, .is_var={&_phony_is_var, 1, 1}}, .vars = {0}};
+Rule phony_rule = {.command.single = {"!phony", strlen("!phony")}};
 Pool console_pool = {1};
 Pool default_pool = {0};
 

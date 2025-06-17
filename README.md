@@ -1,4 +1,5 @@
 # Todo
+- [ ] Canonicalize path (with ability to revert to original on Windows)
 - [ ] Basic build
 - [ ] .ninja_log
 - [ ] .ninja_deps (Discovered dependencies database)
