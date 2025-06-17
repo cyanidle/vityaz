@@ -1,5 +1,5 @@
 # ACTHUNG !!!
-# For development-only. Main distribution is from amalgam file
+# For development-only
 cmake_minimum_required(VERSION 3.16)
 project(vityaz C)
 
@@ -10,7 +10,14 @@ add_executable(vityaz
     src/lex.c
     src/parse.c
     src/graph.c
-    $<$<BOOL:${WIN32}>:src/os-win.c>
-    $<$<BOOL:${UNIX}>:src/os-posix.c>
 )
+
+if (MSVC)
+    target_sources(vityaz PRIVATE src/os-win.c)
+    target_compile_options(vityaz PRIVATE /W3)
+else()
+    target_sources(vityaz PRIVATE src/os-posix.c)
+    target_compile_options(vityaz PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
+endif()
+
 target_include_directories(vityaz PRIVATE include tapki)

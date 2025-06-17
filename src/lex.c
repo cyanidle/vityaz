@@ -60,7 +60,7 @@ static void eat_ws(Lexer* lex) {
 
 static void lex_id(Lexer* lex, bool bracket) {
     Arena* arena = lex->arena;
-    lex->id = (Str){""};
+    lex->id = (Str){"",0,0};
     while(true) {
         char curr = *lex->cursor;
         switch (curr) {
