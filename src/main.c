@@ -16,7 +16,7 @@ int main(int argc, char** argv)
         {0},
     };
     if (!targets.size) {
-        VecAppend(&targets, S("default"));
+        *VecPush(&targets) = S("default");
     }
     int ret = 0;
     if ((ret = ParseCLI(cli, argc, argv)) != 0) {

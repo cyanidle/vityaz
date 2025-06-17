@@ -291,14 +291,14 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             nested_scope.rules = (RulesScope*)ArenaAlloc(arena, sizeof(RulesScope));
             nested_scope.rules->prev = scope.rules;
             FrameF("subninja %s", path.d) {
-                do_parse(arena, nested_scope, result, path.d, ReadFile(path.d).d);
+                do_parse(arena, nested_scope, result, path.d, FileRead(path.d).d);
             }
             break;
         }
         case TOK_INCLUDE: {
             Str path = parse_path(&lex, scope.vars);
             FrameF("include %s", path.d) {
-                do_parse(arena, scope, result, path.d, ReadFile(path.d).d);
+                do_parse(arena, scope, result, path.d, FileRead(path.d).d);
             }
             break;
         }
@@ -314,7 +314,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
 NinjaFile* parse(Arena* arena, const char* file)
 {
     NinjaFile* result = ArenaAlloc(arena, sizeof(*result));
-    Str data = ReadFile(file);
+    Str data = FileRead(file);
     Scope scope = {&result->root_rules, &result->root_vars};
     do_parse(arena, scope, result, file, data.d);
     return result;
