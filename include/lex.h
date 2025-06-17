@@ -27,7 +27,7 @@ typedef enum {
 
 const char* tok_print(Token tok);
 
-// static part of source location (shared by multiple parsed entities
+// static part of source location (shared by multiple parsed entities)
 typedef struct SourceLocStatic {
     const char* data;
     const char* name;
