@@ -141,6 +141,8 @@ static void lex_evalstring(Lexer* lex, Eval *ctx, bool is_path, bool persist) {
                 lex->id.size = 0;
             }
             break;
+        case '\r': //TODO: assert next is NL
+            lex->cursor++;
         case '\n':
         case '\0':
             goto done;
