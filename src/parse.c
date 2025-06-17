@@ -145,6 +145,10 @@ static Str parse_path(Lexer* lex, VarsScope* scope) {
     return res;
 }
 
+static SourceLoc get_loc(Lexer* lex) {
+    return (SourceLoc){lex->begin, lex->cursor - lex->begin, lex->source_name};
+}
+
 static Build* parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
 {
     Arena* arena = lex->arena;
@@ -221,10 +225,12 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
         }
         switch (lex.tok) {
         case TOK_POOL: {
+            SourceLoc loc = get_loc(&lex);
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
             Pool* pool = lookup_pool(arena, &result->pools, name.d);
+            pool->loc = loc;
             if (pool->depth) {
                 syntax_err(&lex, "Pool already defined: %s", name.d);
             }
@@ -232,6 +238,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             break;
         }
         case TOK_RULE: {
+            SourceLoc loc = get_loc(&lex);
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
@@ -239,6 +246,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
                 syntax_err(&lex, "Cannot redefine 'phony' rule");
             }
             Rule* rule = Rules_At(arena, &scope.rules->data, name.d);
+            rule->loc = loc;
             if (TAPKI_UNLIKELY(rule->command.parts.d)) {
                 syntax_err(&lex, "Rule already defined: %s", name.d);
             }
@@ -256,7 +264,9 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             break;
         }
         case TOK_BUILD: {
-            parse_build(&lex, scope, result, &state);
+            SourceLoc loc = get_loc(&lex);
+            Build* build = parse_build(&lex, scope, result, &state);
+            build->loc = loc;
             break;
         }
         case TOK_ID: {
