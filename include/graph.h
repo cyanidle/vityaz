@@ -12,8 +12,14 @@ typedef struct Edge {
     const Rule* rule;
     const VarsScope* scope;
     Edges inputs; // explicit, implicit, order-only
-    Edges ouputs; // explicit, implicit
+    Edges outputs; // explicit, implicit
     const Edges* validators; // may be null
 } Edge;
+
+MapDeclare(EdgesByOutputs, char*, Edge*);
+
+typedef struct Graph {
+    EdgesByOutputs by_outputs;
+} Graph;
 
 #endif //VITYAZ_GRAPH_H

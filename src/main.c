@@ -9,9 +9,9 @@ int main(int argc, char** argv)
     StrVec targets = {0};
     bool dry_run = false;
     CLI cli[] = {
-        {"--cd,-C", &change, .metavar="DIR", .help="change working directory before anything else"},
-        {"--file,-f", &file, .metavar="FILE", .help="specify input build file [default=build.ninja]"},
-        {"--dry,-n", &dry_run, .flag=true, .help="dry run (don't run commands but act like they succeeded)"},
+        {"-C,--cd", &change, .metavar="DIR", .help="change working directory before anything else"},
+        {"-f,--file", &file, .metavar="FILE", .help="specify input build file [default=build.ninja]"},
+        {"-n,--dry", &dry_run, .flag=true, .help="dry run (don't run commands but act like they succeeded)"},
         {"targets", &targets, .many=true, .help="if targets are unspecified, builds the 'default' target (see ninja manual)."},
         {0},
     };
