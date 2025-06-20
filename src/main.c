@@ -25,15 +25,19 @@ int main(int argc, char** argv)
         OsChdir(change.d);
     }
     NinjaFile* nf = parse_file(arena, file.d);
-    Builds targets = {0};
+    Vec(File*) targets = {0};
     if (cli_targets.size) {
-        // todo: from cli
+        VecForEach(&cli_targets, fname) {
+            *VecPush(&targets) = file_get(arena, nf, *fname);
+        }
     } else if (nf->defaults.size) {
-        targets = nf->defaults;
+        VecForEach(&nf->defaults, file) {
+            *VecPush(&targets) = *file;
+        }
     } else {
-        VecForEach(&nf->all, edge) {
-            if (edge->outputs.size == 0 && edge_buildable(edge)) {
-                *VecPush(&targets) = edge;
+        VecForEach(&nf->all_files, file) {
+            if (!file->used_by_build) {
+                *VecPush(&targets) = file;
             }
         }
     }

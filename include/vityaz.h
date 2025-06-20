@@ -44,23 +44,22 @@ typedef struct File {
     size_t path_len;
     uint64_t slash_bits;
     struct Build* producer;
+    bool used_by_build;
 } File;
 
-typedef Vec(File) Files;
+typedef Vec(File*) Files;
 
 typedef struct Build {
     SourceLoc loc;
     const Rule* rule;
-    VarsScope* scope;
+    VarsScope* scope; // may be null
     Files inputs; // explicit, implicit, order-only
     unsigned explicit_inputs;
     unsigned implicit_inputs;
     Files outputs; // explicit, implicit
     unsigned explicit_outputs;
-    const Files* validators; // may be null
+    Files* validators; // may be null
 } Build;
-
-typedef uintptr_t TaggedEdge;
 
 // tagged Edge*
 MapDeclare(CanonFiles, char*, File*);
@@ -70,9 +69,9 @@ typedef struct {
     RulesScope root_rules;
     VarsScope root_vars;
     Files defaults;
-    Vec(Files) all_files;
+    Vec(File) all_files;
     Vec(Build) all_builds;
-    CanonFiles by_output;
+    CanonFiles files;
 } NinjaFile;
 
 extern Rule depfile_rule; // marks edge as depfile-discovered
@@ -97,10 +96,12 @@ NinjaFile* parse_file(Arena* arena, const char* file);
 /// --------
 
 /// graph.c
-void edge_add_item(Arena* arena, NinjaFile *nf, Edge* edge, Str item, BuildItemType type);
-static inline bool edge_buildable(Edge* edge) {
-    return edge->rule && edge->rule != &phony_rule;
-}
+File* file_get(Arena* arena, NinjaFile* nf, Str file);
+void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str item, BuildItemType type);
+/// --------
+
+/// util.c
+void CanonicalizePath(char* path, size_t* len, uint64_t* slash_bits);
 /// --------
 
 #endif //VITYAZ_H

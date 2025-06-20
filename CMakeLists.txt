@@ -10,6 +10,7 @@ add_executable(vityaz
     src/lex.c
     src/parse.c
     src/graph.c
+    src/util.c
 )
 
 if (MSVC)

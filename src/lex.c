@@ -6,15 +6,17 @@ SourceLoc loc_current(Lexer* lex) {
 
 size_t loc_line(SourceLoc loc, size_t* col)
 {
+    size_t _col;
+    if (!col) col = &_col;
     size_t line = 1;
     *col = 0;
     const char* end = loc.origin->data + loc.offset;
     for(const char* it = loc.origin->data; it != end; ++it) {
         if (*it == '\n') {
             line++;
-            col = 0;
+            *col = 0;
         } else {
-            col++;
+            (*col)++;
         }
     }
     return line;

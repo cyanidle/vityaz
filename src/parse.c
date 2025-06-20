@@ -71,7 +71,7 @@ static void consume(Lexer* lex, Token tok) {
 
 typedef enum {
     PARSING_RULE,
-    PARSING_EDGE,
+    PARSING_BUILD,
     PARSING_POOL,
 } ParsingMode;
 
@@ -83,7 +83,7 @@ typedef struct {
 static const char* parsing_print(ParsingMode mode) {
     switch (mode) {
     case PARSING_RULE: return "rule";
-    case PARSING_EDGE: return "build";
+    case PARSING_BUILD: return "build";
     case PARSING_POOL: return "pool";
     }
 }
@@ -109,9 +109,12 @@ static void parsing_add_var(Arena* arena, ParsingState* state, const char* name,
         }
         break;
     }
-    case PARSING_EDGE: {
-        Edge* edge = (Edge*)state->output;
-        *StrMap_At(&edge->scope->data, name) = eval_expand(arena, eval, scope);
+    case PARSING_BUILD: {
+        Build* build = (Build*)state->output;
+        if (!build->scope) {
+            build->scope = (VarsScope*)ArenaAlloc(arena, sizeof(VarsScope));
+        }
+        *StrMap_At(&build->scope->data, name) = eval_expand(arena, eval, scope);
         break;
     }
     case PARSING_POOL: {
@@ -150,15 +153,32 @@ static Str parse_path(Lexer* lex, VarsScope* scope) {
     return res;
 }
 
+static const char* print_item_type(BuildItemType type) {
+    switch (type) {
+    case OUTPUT_EXPLICIT: return "Explicit Outputs";
+    case OUTPUT_IMPLICIT: return "Implicit Outputs (|)";
+    case INPUT_EXPLICIT: return "Explicit Inputs (:)";
+    case INPUT_IMPLICIT: return "Explicit Inputs (|)";
+    case INPUT_ORDER_ONLY: return "Order-Only Inputs (||)";
+    case INPUT_VALIDATOR: return "Validators (|@)";
+    }
+}
+
+static BuildItemType advance_item_type(Lexer* lex, BuildItemType was, BuildItemType next) {
+    if (TAPKI_UNLIKELY(next <= was)) {
+        syntax_err(loc_current(lex),
+            "'%s' cannot follow '%s' in 'build' statement",
+            print_item_type(next), print_item_type(was));
+    }
+    return next;
+}
 
 // TODO: probably handles $<space>/$<nl>/$: incorrectly
 static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
 {
     Arena* arena = lex->arena;
-    Build* edge = VecPush(&result->all);
-    edge->loc = loc_current(lex);
-    edge->scope = ArenaAlloc(arena, sizeof(VarsScope));
-    edge->scope->prev = scope.vars;
+    Build* build = VecPush(&result->all_builds);
+    build->loc = loc_current(lex);
     {
         BuildItemType type = OUTPUT_EXPLICIT;
         while(true) {
@@ -169,7 +189,7 @@ static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState
                 goto inputs;
             case TOK_IMPLICIT:
                 lex_next(lex);
-                type = OUTPUT_IMPLICIT;
+                type = advance_item_type(lex, type, OUTPUT_IMPLICIT);
                 break;
             case TOK_EOF:
             case TOK_NEWLINE:
@@ -178,12 +198,12 @@ static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            edge_add_item(arena, result, edge, path, type);
+            build_add_item(arena, result, build, path, type);
         }
     }
 inputs:
     consume(lex, TOK_ID);
-    edge->rule = lookup_rule(scope.rules, lex->id.d);
+    build->rule = lookup_rule(scope.rules, lex->id.d);
     {
         BuildItemType type = INPUT_EXPLICIT;
         while(true) {
@@ -191,15 +211,15 @@ inputs:
             switch (peek) {
             case TOK_IMPLICIT:
                 lex_next(lex);
-                type = INPUT_IMPLICIT;
+                type = advance_item_type(lex, type, INPUT_IMPLICIT);
                 break;
             case TOK_ORDER_ONLY:
                 lex_next(lex);
-                type = INPUT_ORDER_ONLY;
+                type = advance_item_type(lex, type, INPUT_ORDER_ONLY);
                 break;
             case TOK_VALIDATOR:
                 lex_next(lex);
-                type = INPUT_VALIDATOR;
+                type = advance_item_type(lex, type, INPUT_VALIDATOR);
                 break;
             case TOK_EOF:
             case TOK_NEWLINE:
@@ -208,15 +228,15 @@ inputs:
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            edge_add_item(arena, result, edge, path, type);
+            build_add_item(arena, result, build, path, type);
         }
     }
 done:
-    parsing_start_new(lex, state, PARSING_EDGE, edge);
+    parsing_start_new(lex, state, PARSING_BUILD, build);
 }
 
 static void do_parse(
-    Arena* arena, Scope scope, NinjaFile* result,
+    Arena* arena, Scope scope, NinjaFile* nf,
     const char* source_name, const char* data)
 {
     SourceLocStatic* source = ArenaAlloc(arena, sizeof(*source));
@@ -238,7 +258,7 @@ static void do_parse(
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
-            Pool* pool = lookup_pool(arena, &result->pools, name.d);
+            Pool* pool = lookup_pool(arena, &nf->pools, name.d);
             pool->loc = loc;
             if (pool->depth) {
                 syntax_err(loc_current(&lex), "Pool already defined: %s", name.d);
@@ -269,12 +289,12 @@ static void do_parse(
                     break;
                 }
                 Str target = parse_path(&lex, scope.vars);
-                *VecPush(&result->defaults) = edge_by_output(arena, result, target);
+                *VecPush(&nf->defaults) = file_get(arena, nf, target);
             }
             break;
         }
         case TOK_BUILD: {
-            parse_build(&lex, scope, result, &state);
+            parse_build(&lex, scope, nf, &state);
             break;
         }
         case TOK_ID: {
@@ -310,14 +330,14 @@ static void do_parse(
             nested_scope.rules = (RulesScope*)ArenaAlloc(arena, sizeof(RulesScope));
             nested_scope.rules->prev = scope.rules;
             FrameF("subninja %s", path.d) {
-                do_parse(arena, nested_scope, result, path.d, FileRead(path.d).d);
+                do_parse(arena, nested_scope, nf, path.d, FileRead(path.d).d);
             }
             break;
         }
         case TOK_INCLUDE: {
             Str path = parse_path(&lex, scope.vars);
             FrameF("include %s", path.d) {
-                do_parse(arena, scope, result, path.d, FileRead(path.d).d);
+                do_parse(arena, scope, nf, path.d, FileRead(path.d).d);
             }
             break;
         }
