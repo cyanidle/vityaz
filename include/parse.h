@@ -3,7 +3,7 @@
 #define VITYAZ_PARSE_H
 #include "tapki.h"
 #include "lex.h"
-
+#include "graph.h"
 
 typedef struct VarsScope {
     StrMap data;
@@ -26,30 +26,6 @@ typedef struct {
     SourceLoc loc;
 } Pool;
 
-typedef enum {
-    OUTPUT_EXPLICIT,
-    OUTPUT_IMPLICIT,
-
-    INPUT_EXPLICIT, //explicit
-    INPUT_IMPLICIT, //implicit
-    INPUT_ORDER_ONLY, //order-only
-    INPUT_VALIDATOR, // propagate these build steps to top-level targets. no direct dep
-} BuildItemType;
-
-typedef struct {
-    const char* path;
-    BuildItemType type;
-} BuildItem;
-
-typedef Vec(BuildItem) BuildItems;
-
-typedef struct {
-    const Rule* rule;
-    VarsScope scope;
-    BuildItems items;
-    SourceLoc loc;
-} Build;
-
 MapDeclare(Rules, char*, Rule);
 
 typedef struct RulesScope {
@@ -58,7 +34,6 @@ typedef struct RulesScope {
 } RulesScope;
 
 MapDeclare(Pools, char*, Pool);
-typedef Vec(Build) Builds;
 
 typedef struct {
     RulesScope* rules;
@@ -67,10 +42,11 @@ typedef struct {
 
 typedef struct {
     Pools pools;
-    Builds builds;
-    StrVec defaults;
     RulesScope root_rules;
     VarsScope root_vars;
+    Edges defaults;
+    Vec(Edge) all;
+    EdgesByOutputs by_output;
 } NinjaFile;
 
 extern Rule phony_rule;

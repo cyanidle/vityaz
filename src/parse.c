@@ -1,5 +1,6 @@
 ﻿#include "vityaz.h"
 #include <string.h>
+#include "parse.h"
 
 const char* deref_var(const VarsScope* scope, const char* name)
 {
@@ -20,7 +21,7 @@ Pool default_pool = {0};
 static Pool* lookup_pool(Arena* arena, Pools* pools, const char* name) {
     if (STRING_EQ(name, "console")) {
         return &console_pool;
-    } else if (*name == 0) {
+    } else if (STRING_EQ(name, "")) {
         return &default_pool;
     } else {
         return Pools_At(arena, pools, name);
@@ -68,7 +69,7 @@ static void consume(Lexer* lex, Token tok) {
 
 typedef enum {
     PARSING_RULE,
-    PARSING_BUILD,
+    PARSING_EDGE,
     PARSING_POOL,
 } ParsingMode;
 
@@ -77,17 +78,19 @@ typedef struct {
     void* output;
 } ParsingState;
 
-static const char* parsing_print(ParsingState* state) {
-    switch (state->mode) {
+static const char* parsing_print(ParsingMode mode) {
+    switch (mode) {
     case PARSING_RULE: return "rule";
-    case PARSING_BUILD: return "build";
+    case PARSING_EDGE: return "build";
     case PARSING_POOL: return "pool";
     }
 }
 
 static void parsing_start_new(Lexer* lex, ParsingState* state, ParsingMode mode, void* output) {
     if (TAPKI_UNLIKELY(state->output)) {
-        syntax_err(lex, "Already parsing: %s", parsing_print(state));
+        syntax_err(lex,
+            "Cannot start parsing: '%s' => Already parsing: '%s'",
+            parsing_print(mode), parsing_print(state->mode));
     }
     state->output = output;
     state->mode = mode;
@@ -104,9 +107,9 @@ static void parsing_add_var(Arena* arena, ParsingState* state, const char* name,
         }
         break;
     }
-    case PARSING_BUILD: {
-        Build* build = (Build*)state->output;
-        *StrMap_At(&build->scope.data, name) = eval_expand(arena, eval, scope);
+    case PARSING_EDGE: {
+        Edge* edge = (Edge*)state->output;
+        *StrMap_At(&edge->scope->data, name) = eval_expand(arena, eval, scope);
         break;
     }
     case PARSING_POOL: {
@@ -149,11 +152,11 @@ static SourceLoc get_loc(Lexer* lex) {
     return (SourceLoc){lex->source, lex->cursor - lex->source->data};
 }
 
-static Build* parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
+static Edge* parse_edge(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
 {
     Arena* arena = lex->arena;
-    Build* build = VecPush(&result->builds);
-    build->scope.prev = scope.vars;
+    Edge* edge = VecPush(&result->all);
+    edge->scope->prev = scope.vars;
     {
         BuildItemType type = OUTPUT_EXPLICIT;
         while(true) {
@@ -173,12 +176,12 @@ static Build* parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingSta
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            *VecPush(&build->items) = (BuildItem){path.d, type};
+            add_build_item(edge, (BuildItem){path.d, type});
         }
     }
 inputs:
     consume(lex, TOK_ID);
-    build->rule = lookup_rule(scope.rules, lex->id.d);
+    edge->rule = lookup_rule(scope.rules, lex->id.d);
     {
         BuildItemType type = INPUT_EXPLICIT;
         while(true) {
@@ -203,12 +206,12 @@ inputs:
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            *VecPush(&build->items) = (BuildItem){path.d, type};
+            add_build_item(edge, (BuildItem){path.d, type});
         }
     }
 done:
-    parsing_start_new(lex, state, PARSING_BUILD, build);
-    return build;
+    parsing_start_new(lex, state, PARSING_EDGE, edge);
+    return edge;
 }
 
 static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* source_name, const char* data)
@@ -262,14 +265,17 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
                 if (peek == TOK_EOF || peek == TOK_NEWLINE) {
                     break;
                 }
-                *VecPush(&result->defaults) = parse_path(&lex, scope.vars);
+                Str target = parse_path(&lex, scope.vars);
+                //todo: canonicalize
+                const char* canon = target.d;
+                *VecPush(&result->defaults) = *EdgesByOutputs_At(arena, &result->by_output, canon);
             }
             break;
         }
         case TOK_BUILD: {
             SourceLoc loc = get_loc(&lex);
-            Build* build = parse_build(&lex, scope, result, &state);
-            build->loc = loc;
+            Edge* edge = parse_edge(&lex, scope, result, &state);
+            edge->loc = loc;
             break;
         }
         case TOK_ID: {
@@ -279,8 +285,9 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             Str id = lex.id;
             consume(&lex, TOK_EQ);
             Eval eval = {0};
-            bool persistent_eval = state.mode == PARSING_RULE;
-            lex_rhs(&lex, &eval, persistent_eval);
+            // if parsing rule: its eval state should be allocated in persistent arena
+            bool is_persistent_eval = state.mode == PARSING_RULE;
+            lex_rhs(&lex, &eval, is_persistent_eval);
             if (indent) {
                 if (state.output) {
                     parsing_add_var(arena, &state, id.d, &eval, scope.vars);
