@@ -1,6 +1,5 @@
 ﻿#include "vityaz.h"
 #include <string.h>
-#include "parse.h"
 
 const char* deref_var(const VarsScope* scope, const char* name)
 {
@@ -63,7 +62,10 @@ MapImplement(Pools, STRING_LESS, STRING_EQ);
 
 static void consume(Lexer* lex, Token tok) {
     if (TAPKI_UNLIKELY(lex_next(lex) != tok)) {
-        syntax_err(lex, "%s expected, got: %s", tok_print(tok), tok_print(lex->tok));
+        syntax_err(loc_current(lex),
+            "%s expected, got: %s",
+            tok_print(tok), tok_print(lex->tok)
+        );
     }
 }
 
@@ -88,7 +90,7 @@ static const char* parsing_print(ParsingMode mode) {
 
 static void parsing_start_new(Lexer* lex, ParsingState* state, ParsingMode mode, void* output) {
     if (TAPKI_UNLIKELY(state->output)) {
-        syntax_err(lex,
+        syntax_err(loc_current(lex),
             "Cannot start parsing: '%s' => Already parsing: '%s'",
             parsing_print(mode), parsing_print(state->mode));
     }
@@ -131,7 +133,7 @@ static void parsing_try_commit(Lexer* lex, ParsingState* state) {
     case PARSING_RULE: {
         Rule* rule = (Rule*)state->output;
         if (!rule->command.parts.d) {
-            syntax_err(lex, "command not provided for rule");
+            syntax_err(loc_current(lex), "command not provided for rule");
         }
         break;
     }
@@ -148,14 +150,14 @@ static Str parse_path(Lexer* lex, VarsScope* scope) {
     return res;
 }
 
-static SourceLoc get_loc(Lexer* lex) {
-    return (SourceLoc){lex->source, lex->cursor - lex->source->data};
-}
 
-static Edge* parse_edge(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
+// TODO: probably handles $<space>/$<nl>/$: incorrectly
+static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState* state)
 {
     Arena* arena = lex->arena;
-    Edge* edge = VecPush(&result->all);
+    Build* edge = VecPush(&result->all);
+    edge->loc = loc_current(lex);
+    edge->scope = ArenaAlloc(arena, sizeof(VarsScope));
     edge->scope->prev = scope.vars;
     {
         BuildItemType type = OUTPUT_EXPLICIT;
@@ -171,12 +173,12 @@ static Edge* parse_edge(Lexer* lex, Scope scope, NinjaFile* result, ParsingState
                 break;
             case TOK_EOF:
             case TOK_NEWLINE:
-                syntax_err(lex, "Unexpected EOF or newline inside 'build' statement");
+                syntax_err(loc_current(lex), "Unexpected EOF or newline inside 'build' statement");
             default:
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            add_build_item(edge, (BuildItem){path.d, type});
+            edge_add_item(arena, result, edge, path, type);
         }
     }
 inputs:
@@ -206,15 +208,16 @@ inputs:
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            add_build_item(edge, (BuildItem){path.d, type});
+            edge_add_item(arena, result, edge, path, type);
         }
     }
 done:
     parsing_start_new(lex, state, PARSING_EDGE, edge);
-    return edge;
 }
 
-static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* source_name, const char* data)
+static void do_parse(
+    Arena* arena, Scope scope, NinjaFile* result,
+    const char* source_name, const char* data)
 {
     SourceLocStatic* source = ArenaAlloc(arena, sizeof(*source));
     source->data = data;
@@ -231,30 +234,30 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
         }
         switch (lex.tok) {
         case TOK_POOL: {
-            SourceLoc loc = get_loc(&lex);
+            SourceLoc loc = loc_current(&lex);
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
             Pool* pool = lookup_pool(arena, &result->pools, name.d);
             pool->loc = loc;
             if (pool->depth) {
-                syntax_err(&lex, "Pool already defined: %s", name.d);
+                syntax_err(loc_current(&lex), "Pool already defined: %s", name.d);
             }
             parsing_start_new(&lex, &state, PARSING_POOL, pool);
             break;
         }
         case TOK_RULE: {
-            SourceLoc loc = get_loc(&lex);
+            SourceLoc loc = loc_current(&lex);
             consume(&lex, TOK_ID);
             consume(&lex, TOK_NEWLINE);
             Str name = lex.id;
             if (TAPKI_UNLIKELY(STRING_EQ("phony", name.d))) {
-                syntax_err(&lex, "Cannot redefine 'phony' rule");
+                syntax_err(loc, "Cannot redefine 'phony' rule");
             }
             Rule* rule = Rules_At(arena, &scope.rules->data, name.d);
             rule->loc = loc;
             if (TAPKI_UNLIKELY(rule->command.parts.d)) {
-                syntax_err(&lex, "Rule already defined: %s", name.d);
+                syntax_err(loc, "Rule already defined: %s", name.d);
             }
             parsing_start_new(&lex, &state, PARSING_RULE, rule);
             break;
@@ -266,21 +269,19 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
                     break;
                 }
                 Str target = parse_path(&lex, scope.vars);
-                //todo: canonicalize
-                const char* canon = target.d;
-                *VecPush(&result->defaults) = *EdgesByOutputs_At(arena, &result->by_output, canon);
+                *VecPush(&result->defaults) = edge_by_output(arena, result, target);
             }
             break;
         }
         case TOK_BUILD: {
-            SourceLoc loc = get_loc(&lex);
-            Edge* edge = parse_edge(&lex, scope, result, &state);
-            edge->loc = loc;
+            parse_build(&lex, scope, result, &state);
             break;
         }
         case TOK_ID: {
             if (lex.last != TOK_NEWLINE) {
-                syntax_err(&lex, "variable name must follow a newline, last was: %s", tok_print(lex.last));
+                syntax_err(loc_current(&lex),
+                    "variable name must follow a newline, last was: %s",
+                    tok_print(lex.last));
             }
             Str id = lex.id;
             consume(&lex, TOK_EQ);
@@ -292,7 +293,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
                 if (state.output) {
                     parsing_add_var(arena, &state, id.d, &eval, scope.vars);
                 } else {
-                    syntax_err(&lex, "Unexpected indentation");
+                    syntax_err(loc_current(&lex), "Unexpected indentation");
                 }
             } else {
                 Str value = eval_expand(arena, &eval, scope.vars);
@@ -321,7 +322,7 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
             break;
         }
         default: {
-            syntax_err(&lex, "Unexpected token: %s", tok_print(lex.tok));
+            syntax_err(loc_current(&lex), "Unexpected token: %s", tok_print(lex.tok));
         }
         }
     }
@@ -329,7 +330,8 @@ static void do_parse(Arena* arena, Scope scope, NinjaFile* result, const char* s
     ArenaFree(lex.eval_arena);
 }
 
-NinjaFile* parse(Arena* arena, const char* file)
+
+NinjaFile* parse_file(Arena* arena, const char* file)
 {
     NinjaFile* result = ArenaAlloc(arena, sizeof(*result));
     Str data = FileRead(file);

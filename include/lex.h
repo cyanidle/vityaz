@@ -38,6 +38,11 @@ typedef struct SourceLoc {
     size_t offset;
 } SourceLoc;
 
+struct Lexer;
+
+SourceLoc loc_current(struct Lexer* lex);
+size_t loc_line(SourceLoc loc, size_t* col);
+
 typedef struct Lexer {
     const SourceLocStatic* source;
     const char* cursor;
@@ -69,6 +74,7 @@ typedef struct Eval {
 void lex_path(Lexer* lexer, struct Eval* ctx);
 void lex_rhs(Lexer* lexer, struct Eval* ctx, bool persist);
 
-TAPKI_NORETURN TAPKI_FMT_ATTR(2, 3) void syntax_err(Lexer* lex, const char* fmt, ...);
+TAPKI_NORETURN TAPKI_FMT_ATTR(2, 3)
+void syntax_err(SourceLoc loc, const char* fmt, ...);
 
 #endif //VITYAZ_LEX_H

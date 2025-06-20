@@ -1,9 +1,15 @@
 ﻿#include "vityaz.h"
-#include <string.h>
 
-void syntax_err(Lexer* lex, const char* fmt, ...) {
-    size_t line = 1, col = 0;
-    for(const char* it = lex->source->data; it != lex->cursor; ++it) {
+SourceLoc loc_current(Lexer* lex) {
+    return (SourceLoc){lex->source, lex->cursor - lex->source->data};
+}
+
+size_t loc_line(SourceLoc loc, size_t* col)
+{
+    size_t line = 1;
+    *col = 0;
+    const char* end = loc.origin->data + loc.offset;
+    for(const char* it = loc.origin->data; it != end; ++it) {
         if (*it == '\n') {
             line++;
             col = 0;
@@ -11,11 +17,18 @@ void syntax_err(Lexer* lex, const char* fmt, ...) {
             col++;
         }
     }
+    return line;
+}
+
+void syntax_err(SourceLoc loc, const char* fmt, ...) {
+    size_t col;
+    size_t line = loc_line(loc, &col);
     va_list va;
     va_start(va, fmt);
-    Str msg = TapkiVF(lex->arena, fmt, va);
+    Arena* temp = ArenaCreate(1024);
+    Str msg = TapkiVF(temp, fmt, va);
     va_end(va);
-    Die("%s:%zu (col %zu) => syntax error: %s", lex->source->name, line, col, msg.d);
+    Die("%s:%zu (col %zu) => syntax error: %s", loc.origin->name, line, col, msg.d);
 }
 
 static void eat_comment(Lexer* lex) {
@@ -40,7 +53,7 @@ static void eat_ws(Lexer* lex) {
         default:
             return;
         case '\t':
-            syntax_err(lex, "Tabs not allowed");
+            syntax_err(loc_current(lex), "Tabs not allowed");
         }
     }
 }
@@ -84,7 +97,7 @@ static void lex_id(Lexer* lex, bool bracket) {
                 goto done;
             }
         default: {
-            syntax_err(lex, "Unexpected character in identifier: '%c'", curr);
+            syntax_err(loc_current(lex), "Unexpected character in identifier: '%c'", curr);
         }
         }
     }
@@ -117,7 +130,7 @@ static bool lex_dollar(Lexer* lex)
         lex_id(lex, false);
         return true;
     default:
-        syntax_err(lex, "Unexpected $-escaped character: '%c'", lex->cursor[0]);
+        syntax_err(loc_current(lex), "Unexpected $-escaped character: '%c'", lex->cursor[0]);
     }
     return false;
 }
@@ -235,7 +248,7 @@ again:
         }
     default: {
         if (peek) return TOK_INVALID;
-        syntax_err(lex, "Unexpected character: '%c'", *lex->cursor);
+        syntax_err(loc_current(lex), "Unexpected character: '%c'", *lex->cursor);
     }
     }
 }
