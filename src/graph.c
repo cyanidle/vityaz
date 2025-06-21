@@ -24,10 +24,11 @@ void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str item, BuildIt
     case OUTPUT_EXPLICIT:
     case OUTPUT_IMPLICIT: {
         if (TAPKI_UNLIKELY(file->producer && file->producer != build)) {
-            size_t was_line = loc_line(file->producer->loc, NULL);
+            SourceLoc was_loc = file->producer->loc;
+            size_t was_line = loc_line(was_loc, NULL);
             syntax_err(build->loc,
                 "Output ('%s') already produced by another 'build' @ %s:%zu",
-                file->path, file->producer->loc.origin->name, was_line);
+                file->path, was_loc.origin->name, was_line);
         }
         file->producer = build;
         *VecPush(&build->outputs) = file;
