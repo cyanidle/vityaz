@@ -1,34 +1,48 @@
 ﻿#define TAPKI_IMPLEMENTATION
 #include "vityaz.h"
 
-int main(int argc, char** argv)
-{
-    SetDiePrefix("vityaz: error: ");
-    Arena* arena = ArenaCreate(1024 * 20);
-    Str change = {0};
-    Str file = S("build.ninja");
-    StrVec cli_targets = {0};
-    bool dry_run = false;
+static void ParseNinjaCLI(Arena* arena, NinjaOpts* opts, int argc, char** argv) {
+    opts->file = S("build.ninja");
+    opts->can_error = 1;
     CLI cli[] = {
-        {"-C,--cd", &change, .metavar="DIR", .help="change working directory before anything else"},
-        {"-f,--file", &file, .metavar="FILE", .help="specify input build file [default=build.ninja]"},
-        {"-n,--dry", &dry_run, .flag=true, .help="dry run (don't run commands but act like they succeeded)"},
-        {"targets", &cli_targets, .many=true, .help="if targets are unspecified, builds the 'default' target (see ninja manual)."},
+        {"-C", &opts->change, .metavar="DIR",
+            .help="change working directory before anything else"},
+        {"-f", &opts->file, .metavar="FILE",
+            .help="specify input build file [default=build.ninja]"},
+        {"-t", &opts->tool, .metavar="TOOL",
+            .help="run a subtool (use '-t list' to list subtools). Terminates toplevel options; further flags are passed to the tool"},
+        {"-v,--verbose", &opts->verbose, .flag=true,
+            .help="show all command lines while building"},
+        {"-n", &opts->dry_run, .flag=true,
+            .help="dry run (don't run commands but act like they succeeded)"},
+        {"--quiet", &opts->quiet, .flag=true,
+            .help="don't show progress status, just command output"},
+        {"--version", &opts->version, .flag=true,
+            .help="print ninja compatability version (\"" NINJA_COMPAT_VERSION "\")"},
+        {"-w", &opts->warnings, .many=true, .metavar="FLAG",
+            .help="adjust warnings (use '-w list' to list warnings)"},
+        {"-j", &opts->jobs, .int64=true, .metavar="N",
+            .help="run N jobs in parallel (0 means infinity)"},
+        {"-k", &opts->can_error, .int64=true, .metavar="N",
+            .help="keep going until N jobs fail (0 means infinity) [default=1]"},
+        {"targets", &opts->cli_targets, .many=true, .metavar="targets",
+            .help="if targets are unspecified, builds the 'default' target (see ninja manual)."},
         {0},
-    };
-    int ret = 0;
-    if ((ret = ParseCLI(cli, argc, argv)) != 0) {
-        goto end;
+        };
+    if (ParseCLI(cli, argc, argv) != 0) {
+        exit(1);
     }
-    if (change.size) {
-        fprintf(stderr, "vityaz: Changing directory to: %s\n", change.d);
-        fflush(stderr);
-        OsChdir(change.d);
+    if (opts->version) {
+        exit(0);
     }
-    NinjaFile* nf = parse_file(arena, file.d);
-    Vec(File*) targets = {0};
-    if (cli_targets.size) {
-        VecForEach(&cli_targets, fname) {
+}
+
+typedef Vec(File*) Targets;
+
+static Targets GetTargets(Arena* arena, NinjaOpts* opts, NinjaFile* nf) {
+    Targets targets = {0};
+    if (opts->cli_targets.size) {
+        VecForEach(&opts->cli_targets, fname) {
             File* file = file_get(arena, nf, fname);
             if (!file->producer) {
                 const char* closest = "<TODO>"; // todo: use Lihtenstein dist
@@ -52,7 +66,22 @@ int main(int argc, char** argv)
             }
         }
     }
-end:
+    return targets;
+}
+
+int main(int argc, char** argv)
+{
+    SetDiePrefix("vityaz: error: ");
+    Arena* arena = ArenaCreate(1024 * 4 * 10);
+    NinjaOpts opts = {0};
+    ParseNinjaCLI(arena, &opts, argc, argv);
+    if (opts.change.size) {
+        fprintf(stderr, "vityaz: Changing directory to: %s\n", opts.change.d);
+        fflush(stderr);
+        OsChdir(opts.change.d);
+    }
+    NinjaFile* nf = parse_file(arena, opts.file.d);
+    Targets targets = GetTargets(arena, &opts, nf);
+    // todo
     ArenaFree(arena);
-    return ret;
 }

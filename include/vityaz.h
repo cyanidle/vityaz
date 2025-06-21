@@ -106,6 +106,23 @@ void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str *item, BuildI
 void CanonicalizePath(char* path, size_t* len, uint64_t* slash_bits);
 /// --------
 
+typedef struct {
+    Str change;
+    Str file;
+    StrVec cli_targets;
+    bool dry_run;
+    bool verbose;
+    bool version;
+    bool quiet;
+    Str tool;
+    StrVec warnings;
+    int64_t jobs;
+    int64_t can_error;
+} NinjaOpts;
+
+
+#define NINJA_COMPAT_VERSION "1.13.0"
+
 #endif //VITYAZ_H
 
 /* Deref rules:
