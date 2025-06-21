@@ -60,6 +60,7 @@ typedef struct Lexer {
 Token lex_next(Lexer* lexer);
 Token lex_peek(Lexer* lexer);
 
+// Eval is a string, which can contain $vars: e.g.: "/folder/$var
 typedef struct Eval {
     union {
         Vec(const char*) parts;

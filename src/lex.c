@@ -77,7 +77,7 @@ static void eat_ws(Lexer* lex) {
     IDENT_BEGIN: case '0': case '1': case '2': case '3': case '4': case '5': \
     case '6': case '7': case '8': case '9'
 
-static void lex_id(Lexer* lex, bool bracket) {
+static void do_lex_id(Lexer* lex, bool variable, bool bracket) {
     Arena* arena = lex->arena;
     lex->id = (Str){"",0,0};
     while(true) {
@@ -103,6 +103,10 @@ static void lex_id(Lexer* lex, bool bracket) {
                 goto done;
             }
         default: {
+            if (variable) {
+                lex->cursor++;
+                goto done;
+            }
             syntax_err(loc_current(lex), "Unexpected character in identifier: '%c'", curr);
         }
         }
@@ -112,6 +116,19 @@ done:
         *VecPush(&lex->id) = 0;
     }
     VecShrink(&lex->id);
+}
+
+static void lex_id(Lexer* lex) {
+    do_lex_id(lex, false, false);
+}
+
+static void lex_variable(Lexer* lex) {
+    do_lex_id(lex, true, false);
+}
+
+static void lex_variable_in_braces(Lexer* lex) {
+    lex->cursor++;
+    do_lex_id(lex, true, true);
 }
 
 // return true if deref
@@ -129,11 +146,10 @@ static bool lex_dollar(Lexer* lex)
         lex->cursor++;
         break;
     case '{':
-        lex->cursor++;
-        lex_id(lex, true);
+        lex_variable_in_braces(lex);
         return true;
     case IDENT_BEGIN:
-        lex_id(lex, false);
+        lex_variable(lex);
         return true;
     default:
         syntax_err(loc_current(lex), "Unexpected $-escaped character: '%c'", lex->cursor[0]);
@@ -233,7 +249,7 @@ again:
     case IDENT_BEGIN:
         if (peek)
             return TOK_ID;
-        lex_id(lex, false);
+        lex_id(lex);
         if (lex->indented) {
             return TOK_ID;
         }

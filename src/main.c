@@ -3,7 +3,7 @@
 
 static void ParseNinjaCLI(Arena* arena, NinjaOpts* opts, int argc, char** argv) {
     opts->file = S("build.ninja");
-    opts->can_error = 1;
+    opts->error_limit = 1;
     CLI cli[] = {
         {"-C", &opts->change, .metavar="DIR",
             .help="change working directory before anything else"},
@@ -23,7 +23,7 @@ static void ParseNinjaCLI(Arena* arena, NinjaOpts* opts, int argc, char** argv) 
             .help="adjust warnings (use '-w list' to list warnings)"},
         {"-j", &opts->jobs, .int64=true, .metavar="N",
             .help="run N jobs in parallel (0 means infinity)"},
-        {"-k", &opts->can_error, .int64=true, .metavar="N",
+        {"-k", &opts->error_limit, .int64=true, .metavar="N",
             .help="keep going until N jobs fail (0 means infinity) [default=1]"},
         {"targets", &opts->cli_targets, .many=true, .metavar="targets",
             .help="if targets are unspecified, builds the 'default' target (see ninja manual)."},

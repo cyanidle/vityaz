@@ -5,16 +5,16 @@
 #include "lex.h"
 #include "os.h"
 
-typedef struct VarsScope {
-    StrMap data;
-    struct VarsScope* prev;
-} VarsScope;
+MapDeclare(EvalMap, char*, Eval);
 
-MapDeclare(LazyVars, char*, Eval);
+typedef struct VarsScope {
+    EvalMap data;
+    const struct VarsScope* fallback;
+} VarsScope;
 
 typedef struct {
     Eval command;
-    LazyVars vars;
+    VarsScope vars;
     SourceLoc loc;
 } Rule;
 
@@ -31,11 +31,6 @@ typedef struct RulesScope {
 } RulesScope;
 
 MapDeclare(Pools, char*, Pool);
-
-typedef struct {
-    RulesScope* rules;
-    VarsScope* vars;
-} Scope;
 
 struct Build;
 
@@ -90,8 +85,7 @@ typedef enum {
 } BuildItemType;
 
 /// parse.c
-const char* deref_var(const VarsScope* scope, const char* name);
-Str eval_expand(Arena* arena, Eval* ctx, const VarsScope* scope);
+Str eval_expand(Arena* arena, Eval* eval, const VarsScope* scope);
 NinjaFile* parse_file(Arena* arena, const char* file);
 /// --------
 
@@ -117,9 +111,8 @@ typedef struct {
     Str tool;
     StrVec warnings;
     int64_t jobs;
-    int64_t can_error;
+    int64_t error_limit;
 } NinjaOpts;
-
 
 #define NINJA_COMPAT_VERSION "1.13.0"
 
