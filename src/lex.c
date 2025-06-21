@@ -30,7 +30,11 @@ void syntax_err(SourceLoc loc, const char* fmt, ...) {
     Arena* temp = ArenaCreate(1024);
     Str msg = TapkiVF(temp, fmt, va);
     va_end(va);
-    Die("%s:%zu (col %zu) => syntax error: %s", loc.origin->name, line, col, msg.d);
+    // TODO:
+    // error msg
+    // <snippet>
+    //         ^ near here
+    Die("%s:%zu => syntax error: %s", loc.origin->name, line, msg.d);
 }
 
 static void eat_comment(Lexer* lex) {

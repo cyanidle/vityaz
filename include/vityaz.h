@@ -96,8 +96,10 @@ NinjaFile* parse_file(Arena* arena, const char* file);
 /// --------
 
 /// graph.c
-File* file_get(Arena* arena, NinjaFile* nf, Str file);
-void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str item, BuildItemType type);
+// modifies file
+File* file_get(Arena* arena, NinjaFile* nf, Str* file);
+// modifies item
+void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str *item, BuildItemType type);
 /// --------
 
 /// util.c

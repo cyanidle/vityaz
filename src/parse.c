@@ -198,7 +198,7 @@ static void parse_build(Lexer* lex, Scope scope, NinjaFile* result, ParsingState
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            build_add_item(arena, result, build, path, type);
+            build_add_item(arena, result, build, &path, type);
         }
     }
 inputs:
@@ -228,7 +228,7 @@ inputs:
                 break;
             }
             Str path = parse_path(lex, scope.vars);
-            build_add_item(arena, result, build, path, type);
+            build_add_item(arena, result, build, &path, type);
         }
     }
 done:
@@ -289,7 +289,7 @@ static void do_parse(
                     break;
                 }
                 Str target = parse_path(&lex, scope.vars);
-                *VecPush(&nf->defaults) = file_get(arena, nf, target);
+                *VecPush(&nf->defaults) = file_get(arena, nf, &target);
             }
             break;
         }

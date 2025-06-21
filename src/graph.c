@@ -2,21 +2,21 @@
 
 MapImplement(CanonFiles, STRING_LESS, STRING_EQ);
 
-File* file_get(Arena* arena, NinjaFile* nf, Str file)
+File* file_get(Arena* arena, NinjaFile* nf, Str *file)
 {
     uint64_t slashes;
-    CanonicalizePath(file.d, &file.size, &slashes);
-    File** slot = CanonFiles_At(arena, &nf->files, file.d);
+    CanonicalizePath(file->d, &file->size, &slashes);
+    File** slot = CanonFiles_At(arena, &nf->files, file->d);
     if (!*slot) {
         File* created = *slot = VecPush(&nf->all_files);
         *created = (File){
-            file.d, file.size, slashes, NULL
+            file->d, file->size, slashes, NULL
         };
     }
     return *slot;
 }
 
-void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str item, BuildItemType type)
+void build_add_item(Arena* arena, NinjaFile *nf, Build* build, Str* item, BuildItemType type)
 {
     File* file = file_get(arena, nf, item);
 

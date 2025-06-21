@@ -29,20 +29,25 @@ int main(int argc, char** argv)
     Vec(File*) targets = {0};
     if (cli_targets.size) {
         VecForEach(&cli_targets, fname) {
-            File* found = file_get(arena, nf, *fname);
-            if (!found->producer) {
+            File* file = file_get(arena, nf, fname);
+            if (!file->producer) {
                 const char* closest = "<TODO>"; // todo: use Lihtenstein dist
-                Die("unknown target: '%s', did you mean: '%s'?", fname->d, closest);
+                Die("unknown target: '%s', did you mean: '%s'?", file->path, closest);
             }
-            *VecPush(&targets) = found;
+            *VecPush(&targets) = file;
         }
     } else if (nf->defaults.size) {
-        VecForEach(&nf->defaults, file) {
-            *VecPush(&targets) = *file;
+        VecForEach(&nf->defaults, _file) {
+            File* file = *_file;
+            if (!file->producer) {
+                const char* closest = "<TODO>"; // todo: use Lihtenstein dist
+                Die("'default' specified unknown target: '%s', did you mean: '%s'", file->path, closest);
+            }
+            *VecPush(&targets) = file;
         }
     } else {
         VecForEach(&nf->all_files, file) {
-            if (!file->used_by_build) {
+            if (!file->used_by_build && file->producer) {
                 *VecPush(&targets) = file;
             }
         }
