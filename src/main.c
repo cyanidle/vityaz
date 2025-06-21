@@ -3,6 +3,7 @@
 
 int main(int argc, char** argv)
 {
+    SetDiePrefix("vityaz: error: ");
     Arena* arena = ArenaCreate(1024 * 20);
     Str change = {0};
     Str file = S("build.ninja");
@@ -28,7 +29,12 @@ int main(int argc, char** argv)
     Vec(File*) targets = {0};
     if (cli_targets.size) {
         VecForEach(&cli_targets, fname) {
-            *VecPush(&targets) = file_get(arena, nf, *fname);
+            File* found = file_get(arena, nf, *fname);
+            if (!found->producer) {
+                const char* closest = "<TODO>"; // todo: use Lihtenstein dist
+                Die("unknown target: '%s', did you mean: '%s'?", fname->d, closest);
+            }
+            *VecPush(&targets) = found;
         }
     } else if (nf->defaults.size) {
         VecForEach(&nf->defaults, file) {
